@@ -1,0 +1,6 @@
+{
+  "name": "GMAO - Gestion de Maintenance",
+  "description": "Plateforme complète de gestion de maintenance assistée par ordinateur (GMAO) pour les ordres de travail, équipements, pièces détachées, et maintenance préventive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

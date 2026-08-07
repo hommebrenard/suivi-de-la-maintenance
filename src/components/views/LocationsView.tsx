@@ -1,0 +1,256 @@
+import React, { useState } from 'react';
+import { MapPin, Plus, Search, Building2, Trash2, RotateCcw } from 'lucide-react';
+import { LocationItem } from '../../types';
+
+interface LocationsViewProps {
+  locations: LocationItem[];
+  onAddLocation: (loc: Omit<LocationItem, 'id'>) => void;
+  onDeleteLocation?: (id: string) => void;
+  onClearAllLocations?: () => void;
+  onResetLocations?: () => void;
+}
+
+export const LocationsView: React.FC<LocationsViewProps> = ({
+  locations,
+  onAddLocation,
+  onDeleteLocation,
+  onClearAllLocations,
+  onResetLocations
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [parentLocation, setParentLocation] = useState('');
+
+  const filtered = locations.filter(l =>
+    l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (l.parentLocation || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    onAddLocation({
+      name,
+      parentLocation: parentLocation || 'Site Principal',
+      type: 'Zone',
+      equipmentCount: 0
+    });
+
+    setName('');
+    setParentLocation('');
+    setIsModalOpen(false);
+  };
+
+  return (
+    <div className="flex-1 bg-white min-h-screen flex flex-col">
+      {/* Header matching Screenshot 13 */}
+      <div className="px-6 py-5 border-b border-gray-200">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Emplacements / Sites</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Gérez les usines, les bâtiments, les sites et les zones.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {onResetLocations && (
+              <button
+                type="button"
+                onClick={onResetLocations}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shadow-2xs"
+                title="Réinitialiser la liste officielle des sites"
+              >
+                <RotateCcw className="w-4 h-4 text-blue-600" />
+                <span>Réinitialiser les sites</span>
+              </button>
+            )}
+
+            {locations.length > 0 && onClearAllLocations && (
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-2xs"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>Supprimer tous les sites</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nouvel emplacement</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="mt-5 max-w-sm">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Rechercher des emplacements..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-1.5 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 p-6 bg-gray-50/30">
+        {filtered.length === 0 ? (
+          /* Empty state matching Screenshot 13 */
+          <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center bg-white my-6 max-w-4xl mx-auto shadow-2xs">
+            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4 text-blue-500">
+              <MapPin className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Aucun emplacement / site enregistré</h3>
+            <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+              Créez vos propres usines, bâtiments, zones et sites pour organiser vos OT et équipements.
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded-lg shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Créer mon premier site</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
+            {filtered.map(loc => (
+              <div key={loc.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs space-y-3 relative group">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-base">{loc.name}</h3>
+                      <p className="text-xs text-gray-500">{loc.parentLocation || 'Site Principal'}</p>
+                    </div>
+                  </div>
+
+                  {onDeleteLocation && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteLocation(loc.id)}
+                      className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      title="Supprimer ce site"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t text-xs text-gray-500 flex justify-between">
+                  <span>Équipements rattachés:</span>
+                  <span className="font-semibold text-gray-900">{loc.equipmentCount || 0}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Clear All Modal */}
+      {isResetConfirmOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-rose-100">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Supprimer tous les sites ?</h3>
+            </div>
+
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Voulez-vous supprimer tous les emplacements actuels ({locations.length} site(s)) ?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClearAllLocations) {
+                    onClearAllLocations();
+                  }
+                  setIsResetConfirmOpen(false);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-2xs transition-colors"
+              >
+                Oui, tout supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Nouvel emplacement</h3>
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nom du site ou bâtiment *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Usine Nord - Bâtiment B"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Emplacement parent</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Site Principal"
+                  value={parentLocation}
+                  onChange={(e) => setParentLocation(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                >
+                  Créer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
