@@ -148,63 +148,112 @@ export function findMatchingGammePlan(
   eqCode: string,
   interventionCode: string,
   intDesc: string,
-  gammePlans: GammePlan[]
+  gammePlans: GammePlan[],
+  siteLocation?: string
 ): GammePlan | undefined {
   if (!gammePlans || gammePlans.length === 0) return undefined;
 
   const cleanEq = (eqCode || '').trim().toLowerCase();
   const cleanCode = (interventionCode || '').trim().toLowerCase();
   const cleanTitle = (intDesc || '').trim().toLowerCase();
+  const cleanSite = (siteLocation || '').trim().toLowerCase();
+
+  // Helper to check if two site/location strings conflict (e.g. Kenitra vs Casa)
+  const sitesConflict = (plan: GammePlan): boolean => {
+    const pEq = (plan.equipmentCode || '').toLowerCase();
+    const pDesc = (plan.equipmentDescription || '').toLowerCase();
+    const pTitle = (plan.interventionTitle || '').toLowerCase();
+    
+    const knownSites = [
+      { key: 'knt', names: ['knt', 'kenitra', 'kénitra'] },
+      { key: 'cas', names: ['cas', 'casa', 'casablanca'] },
+      { key: 'rab', names: ['rab', 'rabat'] },
+      { key: 'tng', names: ['tng', 'tanger'] },
+      { key: 'mar', names: ['mar', 'marrakech'] },
+      { key: 'fez', names: ['fez', 'fes', 'fès'] },
+      { key: 'agd', names: ['agd', 'agadir'] },
+    ];
+
+    const otSiteKey = knownSites.find(s => 
+      s.names.some(n => cleanSite.includes(n) || cleanEq.includes(n) || cleanTitle.includes(n))
+    );
+
+    const planSiteKey = knownSites.find(s => 
+      s.names.some(n => pEq.includes(n) || pDesc.includes(n) || pTitle.includes(n))
+    );
+
+    if (otSiteKey && planSiteKey && otSiteKey.key !== planSiteKey.key) {
+      return true; // Conflicting sites (e.g. Casa OT vs Kenitra Gamme)
+    }
+    return false;
+  };
+
+  // Filter out plans from conflicting sites if OT has a clear site identifier
+  const eligiblePlans = gammePlans.filter(p => !sitesConflict(p) && p.tasks && p.tasks.length > 0);
+  if (eligiblePlans.length === 0) return undefined;
 
   // 1. Exact match on planCode and equipmentCode
-  let match = gammePlans.find(p => 
+  let match = eligiblePlans.find(p => 
     p.planCode.trim().toLowerCase() === cleanCode &&
-    p.equipmentCode.trim().toLowerCase() === cleanEq &&
-    p.tasks.length > 0
+    p.equipmentCode.trim().toLowerCase() === cleanEq
   );
   if (match) return match;
 
-  // 2. Match on planCode alone (e.g. PS-POMP-1T-01 applies to all pumps)
-  match = gammePlans.find(p => cleanCode.length > 2 && p.planCode.trim().toLowerCase() === cleanCode && p.tasks.length > 0);
-  if (match) return match;
-
-  // 3. Match on equipmentCode and title
-  match = gammePlans.find(p => 
-    p.equipmentCode.trim().toLowerCase() === cleanEq &&
-    (p.interventionTitle.trim().toLowerCase().includes(cleanTitle) || cleanTitle.includes(p.interventionTitle.trim().toLowerCase())) &&
-    p.tasks.length > 0
-  );
-  if (match) return match;
-
-  // 4. Match on equipment code prefix (e.g. BAM-KNT_AG-ASC-01 vs BAM-KNT_AG-ASC-02 or ASC vs ASC)
-  const eqFamily = cleanEq.replace(/-\d+$/, '');
-  if (eqFamily) {
-    match = gammePlans.find(p => 
-      p.equipmentCode.trim().toLowerCase().startsWith(eqFamily) &&
-      p.tasks.length > 0
-    );
+  // 2. Exact match on planCode / interventionCode alone if length >= 3
+  if (cleanCode.length >= 3) {
+    match = eligiblePlans.find(p => p.planCode.trim().toLowerCase() === cleanCode);
     if (match) return match;
   }
 
-  // 5. Keyword matching in title (ascenseur, pompe, caisson, centrale, etc.)
-  const keywords = ['ascenseur', 'pompe', 'groupe', 'caisson', 'centrale', 'onduleur', 'porte', 'split', 'tableau', 'sanitaire', 'transformateur'];
+  // 3. Match on equipmentCode and title
+  match = eligiblePlans.find(p => 
+    p.equipmentCode.trim().toLowerCase() === cleanEq &&
+    (p.interventionTitle.trim().toLowerCase().includes(cleanTitle) || cleanTitle.includes(p.interventionTitle.trim().toLowerCase()))
+  );
+  if (match) return match;
+
+  // 4. Equipment Family code match (e.g., EXT, ASC, PMP, CTA, CAN, GPLC, PTRSF, SANT, SPT, TD, TGBT, PAC, OND, PRAUT, VMC)
+  const extractFamily = (str: string) => {
+    const m = str.match(/(ext|asc|pmp|pomp|cta|can|gplc|ptrsf|trsf|sant|spt|td|tgbt|pac|ond|praut|vmc|clim)/i);
+    return m ? m[1].toLowerCase() : '';
+  };
+
+  const otFamily = extractFamily(cleanEq) || extractFamily(cleanCode) || extractFamily(cleanTitle);
+  if (otFamily) {
+    match = eligiblePlans.find(p => {
+      const pFam = extractFamily(p.planCode) || extractFamily(p.equipmentCode) || extractFamily(p.interventionTitle);
+      return pFam === otFamily;
+    });
+    if (match) return match;
+  }
+
+  // 5. Keyword matching in title / description / equipment
+  const keywords = [
+    'extracteur', 'extract', 'ventilateur', 'ventilation', 'desenfumage',
+    'ascenseur', 'pompe', 'groupe electrogene', 'groupe', 'caisson',
+    'centrale', 'cta', 'onduleur', 'porte automatique', 'porte', 'split',
+    'tableau', 'tgbt', 'sanitaire', 'transformateur', 'pac', 'pompe a chaleur',
+    'clim', 'climatiseur', 'chaudiere', 'compresseur', 'armoire', 'eclairage',
+    'extincteur', 'ria', 'vmc'
+  ];
+
   const matchedKw = keywords.find(kw => cleanTitle.includes(kw) || cleanEq.includes(kw));
   if (matchedKw) {
-    match = gammePlans.find(p => 
-      (p.interventionTitle.toLowerCase().includes(matchedKw) || p.equipmentCode.toLowerCase().includes(matchedKw)) &&
-      p.tasks.length > 0
+    match = eligiblePlans.find(p => 
+      p.interventionTitle.toLowerCase().includes(matchedKw) || 
+      p.equipmentCode.toLowerCase().includes(matchedKw) ||
+      p.equipmentDescription.toLowerCase().includes(matchedKw)
     );
     if (match) return match;
   }
 
   // 6. Substring match on planCode
-  match = gammePlans.find(p => cleanCode && p.planCode.trim().toLowerCase().includes(cleanCode) && p.tasks.length > 0);
-  if (match) return match;
+  if (cleanCode && cleanCode.length >= 3) {
+    match = eligiblePlans.find(p => p.planCode.trim().toLowerCase().includes(cleanCode));
+    if (match) return match;
+  }
 
-  // 7. Fallback to first gamme with tasks
-  const fallback = gammePlans.find(p => p.tasks && p.tasks.length > 0);
-  if (fallback) return fallback;
-
+  // Never return an arbitrary fallback from a different equipment or site!
   return undefined;
 }
 
@@ -296,8 +345,11 @@ export function parsePlanningCSV(csvContent: string, gammePlans: GammePlan[] = [
     // Description is purely the intervention description (what the equipment underwent)
     const description = intDesc || (eqDesc ? `Intervention sur ${eqDesc}` : 'Maintenance préventive');
 
-    // Attach matching gamme tasks
-    const matchedPlan = findMatchingGammePlan(eqCode, interventionCode, intDesc, gammePlans);
+    // Clean location: if entity is provided in CSV, use it as location directly
+    const locationName = entity || 'Site Principal';
+
+    // Attach matching gamme tasks (respecting site location)
+    const matchedPlan = findMatchingGammePlan(eqCode, interventionCode, intDesc, gammePlans, locationName);
     const tasks: WorkOrderTask[] = matchedPlan
       ? matchedPlan.tasks.map((t, idx) => ({
           id: `task-${i}-${idx}-${Math.floor(Math.random()*10000)}`,
@@ -306,9 +358,6 @@ export function parsePlanningCSV(csvContent: string, gammePlans: GammePlan[] = [
           completed: false
         }))
       : [];
-
-    // Clean location: if entity is provided in CSV, use it as location directly
-    const locationName = entity || 'Site Principal';
 
     workOrders.push({
       id: `wo-imported-${Date.now()}-${i}-${Math.floor(Math.random()*10000)}`,

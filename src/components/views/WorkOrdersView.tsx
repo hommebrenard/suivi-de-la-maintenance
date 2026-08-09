@@ -425,7 +425,8 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
       dispatchWO.equipmentCode || '',
       dispatchWO.interventionCode || '',
       dispatchWO.title || '',
-      gammesList
+      gammesList,
+      dispatchWO.location || dispatchWO.entity || ''
     );
 
     const tasksToCopy: WorkOrderTask[] = (dispatchWO.tasks && dispatchWO.tasks.length > 0)
@@ -705,7 +706,8 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
         selectedWorkOrder.equipmentCode || '',
         selectedWorkOrder.interventionCode || '',
         selectedWorkOrder.title || '',
-        gammesList
+        gammesList,
+        selectedWorkOrder.location || selectedWorkOrder.entity || ''
       );
       const activeTasks = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
         ? selectedWorkOrder.tasks
@@ -2753,10 +2755,36 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         selectedWorkOrder.equipmentCode || '',
                         selectedWorkOrder.interventionCode || '',
                         selectedWorkOrder.title || '',
-                        gammesList
+                        gammesList,
+                        selectedWorkOrder.location || selectedWorkOrder.entity || ''
                       );
 
-                      const activeTasks: WorkOrderTask[] = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
+                      // Filter out tasks if they came from an old mismatched fallback import (e.g. Ascenseur task on Extracteur OT)
+                      const tasksAreMismatched = (() => {
+                        if (!selectedWorkOrder.tasks || selectedWorkOrder.tasks.length === 0) return false;
+                        const woText = `${selectedWorkOrder.title} ${selectedWorkOrder.equipmentName} ${selectedWorkOrder.equipmentCode}`.toLowerCase();
+                        
+                        const isAscenseurTask = selectedWorkOrder.tasks.some(t => 
+                          t.label.toLowerCase().includes('désincarcération') || 
+                          t.label.toLowerCase().includes('desincarcération') || 
+                          t.label.toLowerCase().includes('ascenseur')
+                        );
+                        if (isAscenseurTask && (woText.includes('extracteur') || woText.includes('pompe') || woText.includes('cta') || woText.includes('vmc') || woText.includes('caisson') || woText.includes('split'))) {
+                          return true;
+                        }
+
+                        if (matchedPlan && selectedWorkOrder.tasks.some(t => t.id.includes('task-auto') || t.id.includes('task-imported') || t.id.includes('task-0'))) {
+                          const matchedTaskCodes = new Set(matchedPlan.tasks.map(t => t.actionCode.toLowerCase()));
+                          const matchingCount = selectedWorkOrder.tasks.filter(t => matchedTaskCodes.has(t.code.toLowerCase())).length;
+                          if (matchingCount === 0 && matchedPlan.tasks.length > 0) {
+                            return true;
+                          }
+                        }
+
+                        return false;
+                      })();
+
+                      const activeTasks: WorkOrderTask[] = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0 && !tasksAreMismatched)
                         ? selectedWorkOrder.tasks
                         : (matchedPlan?.tasks.map((t, idx) => ({
                             id: `task-auto-${idx}`,
@@ -3224,7 +3252,8 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                     wo.equipmentCode || '',
                     wo.interventionCode || '',
                     wo.title || '',
-                    gammesList
+                    gammesList,
+                    wo.location || wo.entity || ''
                   );
 
                   const activeTasks: WorkOrderTask[] = (wo.tasks && wo.tasks.length > 0)
