@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, FileSpreadsheet, Upload, Check, AlertCircle, Zap, FileText, ListChecks, Building2 } from 'lucide-react';
 import { WorkOrder, GammePlan } from '../../types';
-import { parsePlanningCSV, parseGammeCSV } from '../../utils/csvParser';
+import { parsePlanningCSV, parseGammeCSV, formatActionCode } from '../../utils/csvParser';
 import { SAMPLE_PLANNING_CSV, SAMPLE_GAMME_CSV } from '../../data/rawImportModels';
 
 interface ImportModalProps {
@@ -509,7 +509,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                           {g.tasks.map((task, tidx) => (
                             <li key={tidx} className="flex items-start gap-2 bg-gray-50/80 p-1.5 rounded border border-gray-100">
                               <span className="font-mono text-[10px] text-blue-600 font-bold shrink-0 bg-white px-1.5 py-0.5 rounded border border-gray-200">
-                                {task.actionCode}
+                                {formatActionCode(task.actionCode, tidx)}
                               </span>
                               <span className="text-gray-800 text-[11px] font-medium leading-tight">{task.label}</span>
                             </li>

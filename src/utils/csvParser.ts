@@ -41,6 +41,88 @@ export function formatLocalDate(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+// Format Action Code consistently
+// Standard catalog codes (3 digits without hyphen, e.g. ACT080, ACT089) -> 1 - ACT080, 10 - ACT089
+// Custom/Added codes or non-catalog (e.g. ACT-11, ACT-ADD, ACT090) -> 11 - ACT-11
+export function formatActionCode(code: string | undefined, index: number): string {
+  const displayIndex = index + 1;
+  if (!code || !code.trim()) {
+    return `${displayIndex} - ACT-${displayIndex}`;
+  }
+
+  const clean = code.trim();
+
+  // Pattern 1: Already has index prefix like "1 - ACT080" or "11 - ACT-11" or "11 - ACT090"
+  const withPrefixMatch = clean.match(/^(\d+)\s*-\s*(.*)$/);
+  if (withPrefixMatch) {
+    const idxPart = withPrefixMatch[1];
+    const actPart = withPrefixMatch[2].trim().toUpperCase();
+
+    // If actPart is ACT090 (from previous custom generation), convert to ACT-11
+    if (actPart === 'ACT090' || actPart === '090') {
+      return `${idxPart} - ACT-${idxPart}`;
+    }
+
+    // Standard 3-digit catalog code, e.g. ACT080, ACT089, ACT266
+    if (/^ACT\d{3}$/.test(actPart)) {
+      return `${idxPart} - ${actPart}`;
+    }
+
+    // Hyphenated custom code e.g. ACT-11, ACT-12, ACT-ADD
+    if (actPart.startsWith('ACT-')) {
+      return `${idxPart} - ${actPart}`;
+    }
+
+    // If starts with ACT e.g. ACT11
+    if (actPart.startsWith('ACT')) {
+      const rest = actPart.replace('ACT', '').trim();
+      if (rest) {
+        return `${idxPart} - ACT-${rest}`;
+      }
+      return `${idxPart} - ACT-${idxPart}`;
+    }
+
+    return `${idxPart} - ${actPart}`;
+  }
+
+  // Pattern 2: Code without prefix
+  const upperClean = clean.toUpperCase();
+
+  // If ACT090 specifically from custom generation
+  if (upperClean === 'ACT090' || upperClean === '090') {
+    return `${displayIndex} - ACT-${displayIndex}`;
+  }
+
+  // Standard 3-digit catalog code (e.g. ACT080, ACT089, ACT266)
+  if (/^ACT\d{3}$/.test(upperClean)) {
+    return `${displayIndex} - ${upperClean}`;
+  }
+
+  // Hyphenated custom code e.g. ACT-11
+  if (upperClean.startsWith('ACT-')) {
+    return `${displayIndex} - ${upperClean}`;
+  }
+
+  // Code starting with ACT e.g. ACT11
+  if (upperClean.startsWith('ACT')) {
+    const rest = upperClean.replace('ACT', '').trim();
+    if (rest) {
+      return `${displayIndex} - ACT-${rest}`;
+    }
+    return `${displayIndex} - ACT-${displayIndex}`;
+  }
+
+  // Pure number e.g. "80" -> "1 - ACT080", "11" -> "11 - ACT-11"
+  if (/^\d+$/.test(clean)) {
+    if (clean.length === 3 && clean !== '090') {
+      return `${displayIndex} - ACT${clean}`;
+    }
+    return `${displayIndex} - ACT-${clean}`;
+  }
+
+  return `${displayIndex} - ${clean}`;
+}
+
 // Convert any French date (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, DD.MM.YYYY, etc.) to YYYY-MM-DD
 export function parseFrenchDate(dateStr: string): string {
   if (!dateStr) return formatLocalDate(new Date());
@@ -132,9 +214,10 @@ export function parseGammeCSV(csvContent: string): GammePlan[] {
         };
         plans.push(currentPlan);
       }
+      const nextIdx = currentPlan.tasks.length;
       currentPlan.tasks.push({
-        id: `task-${i}-${currentPlan.tasks.length}`,
-        actionCode: actionCode || `ACT-${currentPlan.tasks.length + 1}`,
+        id: `task-${i}-${nextIdx}`,
+        actionCode: formatActionCode(actionCode, nextIdx),
         label: intDesc
       });
     }
@@ -353,7 +436,7 @@ export function parsePlanningCSV(csvContent: string, gammePlans: GammePlan[] = [
     const tasks: WorkOrderTask[] = matchedPlan
       ? matchedPlan.tasks.map((t, idx) => ({
           id: `task-${i}-${idx}-${Math.floor(Math.random()*10000)}`,
-          code: t.actionCode,
+          code: formatActionCode(t.actionCode, idx),
           label: t.label,
           completed: false
         }))

@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { WorkOrder, WorkOrderStatus, WorkOrderPriority, WorkOrderType, Equipment, GammePlan, WorkOrderTask, LocationItem, IntervenantLog } from '../../types';
 import { ImportModal } from './ImportModal';
-import { parseGammeCSV, findMatchingGammePlan, formatLocalDate } from '../../utils/csvParser';
+import { parseGammeCSV, findMatchingGammePlan, formatLocalDate, formatActionCode } from '../../utils/csvParser';
 import { SAMPLE_GAMME_CSV } from '../../data/rawImportModels';
 import { INITIAL_LOCATIONS } from '../../data/mockData';
 
@@ -127,17 +127,54 @@ function getEquipmentLabel(wo?: WorkOrder | null, equipmentList: Equipment[] = [
 }
 
 function formatDateLabel(dateStr?: string): string {
-  if (!dateStr) return '—';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    const [, month, day] = parts;
-    const monthsFr = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    const mIdx = parseInt(month, 10) - 1;
-    if (mIdx >= 0 && mIdx < 12) {
-      return `${parseInt(day, 10)} ${monthsFr[mIdx]}`;
+  if (!dateStr || dateStr === '—') return '—';
+
+  const cleanStr = dateStr.trim();
+
+  // If ISO string or YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  const dateOnly = cleanStr.split('T')[0].split(' ')[0];
+  const dashParts = dateOnly.split('-');
+  if (dashParts.length === 3) {
+    const [y, m, d] = dashParts;
+    if (y.length === 4) {
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
     }
-    return `${day}/${month}`;
   }
+
+  // If already DD/MM/YYYY or DD/MM/YY
+  const slashParts = dateOnly.split('/');
+  if (slashParts.length === 3) {
+    const [d, m, y] = slashParts;
+    const fullYear = y.length === 2 ? `20${y}` : y;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${fullYear}`;
+  }
+
+  // If text like "28 avr." or "28 avr. 2026"
+  const monthsFr: Record<string, string> = {
+    'janv': '01', 'jan': '01', 'janvier': '01',
+    'févr': '02', 'fevr': '02', 'feb': '02', 'février': '02', 'fevrier': '02',
+    'mars': '03', 'mar': '03',
+    'avr': '04', 'avril': '04', 'apr': '04',
+    'mai': '05',
+    'juin': '06', 'jun': '06',
+    'juil': '07', 'jul': '07', 'juillet': '07',
+    'août': '08', 'aout': '08', 'aug': '08',
+    'sept': '09', 'sep': '09', 'septembre': '09',
+    'oct': '10', 'octobre': '10',
+    'nov': '11', 'novembre': '11',
+    'déc': '12', 'dec': '12', 'décembre': '12', 'decembre': '12'
+  };
+
+  const textMatch = cleanStr.match(/^(\d{1,2})\s+([a-zA-Zà-ÿ]+)\.?\s*(\d{4})?$/i);
+  if (textMatch) {
+    const day = textMatch[1].padStart(2, '0');
+    const monthText = textMatch[2].toLowerCase().replace('.', '');
+    const year = textMatch[3] || '2026';
+    const foundMonthKey = Object.keys(monthsFr).find(k => monthText.startsWith(k));
+    const monthNum = foundMonthKey ? monthsFr[foundMonthKey] : '01';
+    return `${day}/${monthNum}/${year}`;
+  }
+
   return dateStr;
 }
 
@@ -433,7 +470,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
       ? dispatchWO.tasks.map(t => ({ ...t, completed: false }))
       : (matchedPlan?.tasks.map((t, idx) => ({
           id: `task-auto-${idx}`,
-          code: t.actionCode,
+          code: formatActionCode(t.actionCode, idx),
           label: t.label,
           completed: false
         })) || []);
@@ -711,7 +748,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
       );
       const activeTasks = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
         ? selectedWorkOrder.tasks
-        : (matchedPlan?.tasks.map((t) => ({ code: t.actionCode, label: t.label, completed: false })) || []);
+        : (matchedPlan?.tasks.map((t, idx) => ({ code: formatActionCode(t.actionCode, idx), label: t.label, completed: false })) || []);
 
       const printIntervenants = getWorkOrderIntervenants(selectedWorkOrder);
       const printTotalInterMins = computeTotalIntervenantsMinutes(printIntervenants);
@@ -953,9 +990,9 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                ${activeTasks.length > 0 ? activeTasks.map(t => `
+                ${activeTasks.length > 0 ? activeTasks.map((t, idx) => `
                   <tr>
-                    <td class="action-code">${t.code}</td>
+                    <td class="action-code">${formatActionCode(t.code, idx)}</td>
                     <td>${t.label}</td>
                     <td class="check-col">${t.completed ? '✅ Oui' : '[  ]'}</td>
                     <td></td>
@@ -2788,7 +2825,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         ? selectedWorkOrder.tasks
                         : (matchedPlan?.tasks.map((t, idx) => ({
                             id: `task-auto-${idx}`,
-                            code: t.actionCode,
+                            code: formatActionCode(t.actionCode, idx),
                             label: t.label,
                             completed: false
                           })) || []);
@@ -2882,7 +2919,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                                 Aucune gamme prédéfinie pour cet équipement. Ajoutez des tâches ci-dessous.
                               </p>
                             ) : (
-                              activeTasks.map((task) => (
+                              activeTasks.map((task, index) => (
                                 <div
                                   key={task.id}
                                   onClick={() => toggleTask(task.id)}
@@ -2911,7 +2948,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                                       <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded ${
                                         task.completed ? 'bg-emerald-200/80 text-emerald-900' : 'bg-blue-100 text-blue-800'
                                       }`}>
-                                        {task.code}
+                                        {formatActionCode(task.code, index)}
                                       </span>
                                       {task.completed && (
                                         <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded-full uppercase">
@@ -2945,10 +2982,21 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && newTaskText.trim()) {
                             e.preventDefault();
-                            const existingTasks = selectedWorkOrder.tasks || [];
+                            const currentPlan = findMatchingGammePlan(
+                              selectedWorkOrder.equipmentCode || '',
+                              selectedWorkOrder.title || '',
+                              selectedWorkOrder.description || '',
+                              gammesList,
+                              selectedWorkOrder.location || selectedWorkOrder.entity || ''
+                            );
+                            const existingTasks: WorkOrderTask[] = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
+                              ? selectedWorkOrder.tasks
+                              : (currentPlan?.tasks.map((t, idx) => ({ id: `task-auto-${idx}`, code: formatActionCode(t.actionCode, idx), label: t.label, completed: false })) || []);
+                            const nextIndex = existingTasks.length + 1;
+                            const formattedCode = `${nextIndex} - ACT-${nextIndex}`;
                             const newTask: WorkOrderTask = {
                               id: `task-custom-${Date.now()}`,
-                              code: `ACT-${existingTasks.length + 1}`,
+                              code: formattedCode,
                               label: newTaskText.trim(),
                               completed: false
                             };
@@ -2966,10 +3014,21 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         type="button"
                         onClick={() => {
                           if (!newTaskText.trim()) return;
-                          const existingTasks = selectedWorkOrder.tasks || [];
+                          const currentPlan = findMatchingGammePlan(
+                            selectedWorkOrder.equipmentCode || '',
+                            selectedWorkOrder.title || '',
+                            selectedWorkOrder.description || '',
+                            gammesList,
+                            selectedWorkOrder.location || selectedWorkOrder.entity || ''
+                          );
+                          const existingTasks: WorkOrderTask[] = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
+                            ? selectedWorkOrder.tasks
+                            : (currentPlan?.tasks.map((t, idx) => ({ id: `task-auto-${idx}`, code: formatActionCode(t.actionCode, idx), label: t.label, completed: false })) || []);
+                          const nextIndex = existingTasks.length + 1;
+                          const formattedCode = `${nextIndex} - ACT-${nextIndex}`;
                           const newTask: WorkOrderTask = {
                             id: `task-custom-${Date.now()}`,
-                            code: `ACT-${existingTasks.length + 1}`,
+                            code: formattedCode,
                             label: newTaskText.trim(),
                             completed: false
                           };
@@ -3260,7 +3319,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                     ? wo.tasks
                     : (matchedPlan?.tasks.map((t, idx) => ({
                         id: `task-auto-${idx}`,
-                        code: t.actionCode,
+                        code: formatActionCode(t.actionCode, idx),
                         label: t.label,
                         completed: false
                       })) || []);
@@ -3325,12 +3384,12 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                           </div>
 
                           <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto">
-                            {activeTasks.map(t => (
+                            {activeTasks.map((t, idx) => (
                               <div key={t.id} className="flex items-start gap-2 bg-white p-1.5 rounded border border-gray-200">
                                 <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold shrink-0 ${
                                   t.completed ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
                                 }`}>
-                                  {t.code}
+                                  {formatActionCode(t.code, idx)}
                                 </span>
                                 <span className={`text-xs ${t.completed ? 'text-emerald-950 font-bold' : 'text-gray-800 font-semibold'}`}>
                                   {t.label} {t.completed ? '✓' : ''}
