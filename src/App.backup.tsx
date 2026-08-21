@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import Login from './components/Login';
 import { Sidebar } from './components/Sidebar';
 import { WorkOrdersView } from './components/views/WorkOrdersView';
 import { RequestsView } from './components/views/RequestsView';
@@ -71,11 +69,7 @@ function getInitialState<T>(key: string, fallback: T): T {
   return fallback;
 }
 
-// ============================================
-// COMPOSANT PRINCIPAL DE L'APPLICATION (protégé)
-// ============================================
-function MainApp() {
-  const { user, loading, signOut } = useAuth();
+export default function App() {
   const [currentTab, setCurrentTab] = useState<NavigationItem>('work-orders');
 
   // App Centralized State with localStorage persistence
@@ -147,31 +141,6 @@ function MainApp() {
     localStorage.setItem('gmao_inventory', JSON.stringify(inventory));
   }, [inventory]);
 
-  // ============================================
-  // GESTION AUTHENTIFICATION
-  // ============================================
-
-  // Pendant le chargement de la session
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Chargement...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Si non connecté → afficher Login
-  if (!user) {
-    return <Login />;
-  }
-
-  // ============================================
-  // HANDLERS (inchangés)
-  // ============================================
-
   // Handlers - Work Orders
   const handleCreateWorkOrder = (woData: Omit<WorkOrder, 'id' | 'code' | 'createdAt' | 'updatedAt'>) => {
     const newId = `wo-${Date.now()}`;
@@ -198,6 +167,7 @@ function MainApp() {
   const handleBulkImportWorkOrders = (newOrders: WorkOrder[], replaceExisting?: boolean) => {
     if (replaceExisting) {
       setWorkOrders(newOrders);
+      // Update locations state to match only the imported sites
       const importedSites = Array.from(
         new Set(newOrders.flatMap(w => [w.location, w.entity]).filter((s): s is string => Boolean(s) && s.trim().length > 0))
       );
@@ -584,20 +554,6 @@ function MainApp() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Barre utilisateur en haut */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-           <div className="text-sm text-gray-600">
-            Connecté en tant que : <strong className="text-gray-900">{user.email}</strong>
-          </div>
-          <button
-            type="button"
-            onClick={signOut}
-            className="px-4 py-2 text-xs font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-xs"
-          >
-            Se déconnecter
-          </button>
-        </div>
-
         {renderCurrentView()}
       </main>
 
@@ -643,16 +599,5 @@ function MainApp() {
         </div>
       )}
     </div>
-  );
-}
-
-// ============================================
-// EXPORT PRINCIPAL - Enveloppe avec AuthProvider
-// ============================================
-export default function App() {
-  return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
   );
 }
