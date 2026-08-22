@@ -2759,31 +2759,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Multi-Site Dispatch Banner */}
-                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-2xs font-bold text-xs">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-purple-950 block">Répartition Multi-Sites</span>
-                        <span className="text-[11px] text-purple-700">Dupliquez cet OT et sa gamme d'actions sur d'autres sites de votre réseau.</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDispatchWO(selectedWorkOrder);
-                        const otherSites = availableSiteNames.filter(s => s !== (selectedWorkOrder.location || 'Atelier Principal'));
-                        setSelectedTargetSites(otherSites);
-                        setIsMultiSiteModalOpen(true);
-                      }}
-                      className="px-3 py-1.5 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors shadow-2xs shrink-0 flex items-center gap-1.5"
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>Répartir sur d'autres sites</span>
-                    </button>
-                  </div>
+                  
 
                   {/* Gamme Opératoire / Checklist Actions */}
                   <div className="border-t border-gray-200 pt-3">
@@ -2963,6 +2939,21 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                                     }`}>
                                       {task.label}
                                     </p>
+                                                                      {/* Champ Commentaire / Justification */}
+                                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="text"
+                                      value={(task as any).comment || ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const updatedTasks = activeTasks.map(t => t.id === task.id ? { ...t, comment: val } : t);
+                                        setSelectedWorkOrder({ ...selectedWorkOrder, tasks: updatedTasks });
+                                        if (onEditWorkOrder) onEditWorkOrder(selectedWorkOrder.id, { tasks: updatedTasks });
+                                      }}
+                                      placeholder={task.completed ? 'Commentaire (ex: RAS)' : 'Justification si non faite / observation'}
+                                      className="w-full text-xs px-2.5 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-800 placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:bg-white focus:outline-none"
+                                    />
+                                  </div>
                                   </div>
                                 </div>
                               ))
