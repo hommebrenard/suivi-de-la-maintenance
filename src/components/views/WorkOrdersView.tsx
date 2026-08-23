@@ -979,7 +979,7 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
               </div>
             </div>
 
-            <div class="section-header">Gamme opératoire & Checklist des actions (${activeTasks.length})</div>
+                        <div class="section-header">Gamme opératoire & Checklist des actions (${activeTasks.length})</div>
             <table>
               <thead>
                 <tr>
@@ -990,14 +990,19 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                ${activeTasks.length > 0 ? activeTasks.map((t, idx) => `
-                  <tr>
-                    <td class="action-code">${formatActionCode(t.code, idx)}</td>
-                    <td>${t.label}</td>
-                    <td class="check-col">${t.completed ? '✅ Oui' : '[  ]'}</td>
-                    <td></td>
-                  </tr>
-                `).join('') : '<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding: 12px;">Aucune action enregistrée sous cet ordre de travail.</td></tr>'}
+                ${activeTasks.length > 0 ? activeTasks.map((t: any, idx: number) => {
+                  const codeAffiche = t.code || t.actionCode || `ACT-${String(idx + 1).padStart(2, '0')}`;
+                  const commentaire = t.comment || '';
+                  const statut = t.completed ? '✅ Oui' : '[  ]';
+                  return `
+                    <tr>
+                      <td class="action-code">${codeAffiche}</td>
+                      <td>${t.label || ''}</td>
+                      <td class="check-col">${statut}</td>
+                      <td>${commentaire}</td>
+                    </tr>
+                  `;
+                }).join('') : '<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding: 12px;">Aucune action enregistrée sous cet ordre de travail.</td></tr>'}
               </tbody>
             </table>
 
@@ -1028,9 +1033,9 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
       } else {
         window.print();
       }
-    } catch (err) {
+        } catch (err: any) {
       console.error("Print error:", err);
-      window.print();
+      alert("ERREUR IMPRESSION : " + (err?.message || err));
     }
   };
 
@@ -2797,14 +2802,9 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         return false;
                       })();
 
-                      const activeTasks: WorkOrderTask[] = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0 && !tasksAreMismatched)
-                        ? selectedWorkOrder.tasks
-                        : (matchedPlan?.tasks.map((t, idx) => ({
-                            id: `task-auto-${idx}`,
-                            code: formatActionCode(t.actionCode, idx),
-                            label: t.label,
-                            completed: false
-                          })) || []);
+                     const activeTasks = (selectedWorkOrder.tasks && selectedWorkOrder.tasks.length > 0)
+  ? selectedWorkOrder.tasks
+  : (matchedPlan?.tasks.map((t, idx) => ({ id: `task-${idx + 1}`, code: t.actionCode || formatActionCode(t.actionCode, idx), label: t.label, completed: false, comment: '' })) || []);
 
                       const doneCount = activeTasks.filter(t => t.completed).length;
                       const progressPercent = activeTasks.length > 0 ? Math.round((doneCount / activeTasks.length) * 100) : 0;
