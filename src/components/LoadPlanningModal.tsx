@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   UploadCloud, 
@@ -19,10 +19,15 @@ import {
   Check,
   ChevronRight,
   HelpCircle,
-  FileCheck2
+  FileCheck2,
+  MapPin,
+  Globe2,
+  UserCheck,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
-import { Equipment, PlannedTask, ExecutionRecord, GammeOperatoire, PlanningDatasetInfo } from '../types';
-import { EQUIPMENTS_DATA, generatePlannedTasks, generateInitialExecutions } from '../data/maintenanceData';
+import { Equipment, PlannedTask, ExecutionRecord, GammeOperatoire, PlanningDatasetInfo, SiteInfo } from '../types';
+import { EQUIPMENTS_DATA, DEFAULT_SITES, generateEquipmentsForSite, MULTI_SITE_PRESET_EQUIPMENTS, generatePlannedTasks, generateInitialExecutions } from '../data/maintenanceData';
 import { GAMMES_CATALOG } from '../data/gammesData';
 
 interface LoadPlanningModalProps {
@@ -30,11 +35,18 @@ interface LoadPlanningModalProps {
   onClose: () => void;
   datasetInfo: PlanningDatasetInfo;
   gammesList: GammeOperatoire[];
-  onLoadPreset: (presetType: 'official_2026' | 'avril_test' | 'gammes_only') => void;
+  sites: SiteInfo[];
+  selectedSiteCode: string;
+  onSelectSite: (siteCode: string) => void;
+  onAddSite: (newSite: SiteInfo, autoGenerateEquipments: boolean) => void;
+  onLoadSitePlanning: (siteCode: string) => void;
+  onLoadAllSitesNetwork: () => void;
+  onLoadPreset: (presetType: 'official_2026' | 'all_sites_network' | 'avril_test' | 'gammes_only') => void;
   onImportPlanning: (equipments: Equipment[], tasks: PlannedTask[], gammes?: GammeOperatoire[]) => void;
   onUpdateGammes: (newGammes: GammeOperatoire[]) => void;
   onResetToDefault: () => void;
   currentWeekNumber: number;
+  initialTab?: 'presets' | 'import' | 'gammes' | 'sites' | 'diagnostic';
 }
 
 export const LoadPlanningModal: React.FC<LoadPlanningModalProps> = ({
@@ -42,17 +54,40 @@ export const LoadPlanningModal: React.FC<LoadPlanningModalProps> = ({
   onClose,
   datasetInfo,
   gammesList,
+  sites,
+  selectedSiteCode,
+  onSelectSite,
+  onAddSite,
+  onLoadSitePlanning,
+  onLoadAllSitesNetwork,
   onLoadPreset,
   onImportPlanning,
   onUpdateGammes,
   onResetToDefault,
   currentWeekNumber,
+  initialTab = 'presets',
 }) => {
   if (!isOpen) return null;
 
-  const [activeTab, setActiveTab] = useState<'presets' | 'import' | 'gammes' | 'diagnostic'>('presets');
+  const [activeTab, setActiveTab] = useState<'sites' | 'presets' | 'import' | 'gammes' | 'diagnostic'>(initialTab);
   const [gammeSearchQuery, setGammeSearchQuery] = useState('');
   const [selectedGamme, setSelectedGamme] = useState<GammeOperatoire | null>(gammesList[0] || null);
+
+  // Sync initial tab when opening
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
+  // New Site Form State
+  const [showAddSiteForm, setShowAddSiteForm] = useState(false);
+  const [newSiteCode, setNewSiteCode] = useState('');
+  const [newSiteName, setNewSiteName] = useState('');
+  const [newSiteZone, setNewSiteZone] = useState<'NORD' | 'ORIENTAL' | 'CENTRE' | 'SUD'>('NORD');
+  const [newSiteCity, setNewSiteCity] = useState('');
+  const [newSiteManager, setNewSiteManager] = useState('');
+  const [autoGenEquipments, setAutoGenEquipments] = useState(true);
 
   // New Gamme Form State
   const [showAddGammeForm, setShowAddGammeForm] = useState(false);
@@ -70,13 +105,57 @@ export const LoadPlanningModal: React.FC<LoadPlanningModalProps> = ({
   }>({ type: 'idle', message: '' });
 
   // Handle Preset Selection
-  const handleSelectPreset = (type: 'official_2026' | 'avril_test' | 'gammes_only') => {
+  const handleSelectPreset = (type: 'official_2026' | 'all_sites_network' | 'avril_test' | 'gammes_only') => {
     onLoadPreset(type);
+    if (type === 'all_sites_network') {
+      setImportStatus({
+        type: 'success',
+        message: 'Réseau Multi-Sites BAM (6 agences, plus de 130 équipements) chargé avec succès !',
+      });
+    } else if (type === 'avril_test') {
+      setImportStatus({
+        type: 'success',
+        message: 'Jeu de données Focus Avril 2026 (S15 à S18) chargé avec succès !',
+      });
+    } else {
+      setImportStatus({
+        type: 'success',
+        message: 'Planning Annuel 2026 BAM Al Hoceima et Gammes Opératoires chargés avec succès !',
+      });
+    }
+  };
+
+  // Handle Site Creation
+  const handleCreateSite = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSiteCode.trim() || !newSiteName.trim() || !newSiteCity.trim()) {
+      setImportStatus({
+        type: 'error',
+        message: 'Veuillez renseigner le code, le nom et la ville du site.',
+      });
+      return;
+    }
+
+    const formattedCode = newSiteCode.trim().toUpperCase();
+    const newSite: SiteInfo = {
+      code: formattedCode.startsWith('BAM-') ? formattedCode : `BAM-${formattedCode}`,
+      name: newSiteName.trim(),
+      zone: newSiteZone,
+      city: newSiteCity.trim(),
+      manager: newSiteManager.trim() || 'Responsable Technique BAM',
+      contact: 'tech@bkam.ma',
+    };
+
+    onAddSite(newSite, autoGenEquipments);
+    setShowAddSiteForm(false);
+    setNewSiteCode('');
+    setNewSiteName('');
+    setNewSiteCity('');
+    setNewSiteManager('');
+
     setImportStatus({
       type: 'success',
-      message: type === 'avril_test' 
-        ? 'Jeu de données Focus Avril 2026 (S15 à S18) chargé avec succès !'
-        : 'Planning Annuel 2026 BAM Al Hoceima et Gammes Opératoires chargés avec succès !',
+      message: `Site « ${newSite.name} » ajouté avec succès ! ${autoGenEquipments ? 'Parc technique standard de 18 équipements généré.' : ''}`,
     });
   };
 
@@ -88,13 +167,14 @@ BAM-HCM_AG-PTRSF-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,TRANSFORMATEUR PUISSANCE: 
 BAM-HCM_AG-GPLC-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,GROUPE ELECTROGENE 250KVA,ÉLECTRICITÉ,GROUPE ÉLECTROGÈNE,1,Local Technique RDC,Haute,H,"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52"
 BAM-HCM_AG-OND-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,ONDULEUR TRIPHASE 60KVA,ÉLECTRICITÉ,ONDULEUR,1,Local Onduleurs,Haute,H,"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52"
 BAM-HCM_AG-ASC-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,ASCENSEUR PRINCIPAL 630KG,ÉLECTRICITÉ,ASCENSEUR,1,Gaine Centrale,Haute,M,"4,8,12,16,20,24,28,32,36,40,44,48,52"
-BAM-HCM_AG-SPT-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,CLIMATISEUR SPLIT DIRECTION,FLUIDE,CLIMATISATION,1,1er Étage Direction,Moyenne,S,"15,37"`;
+BAM-HCM_AG-SPT-01,NORD,AL HOCEIMA AGENCE,BAM-HCM_AG,CLIMATISEUR SPLIT DIRECTION,FLUIDE,CLIMATISATION,1,1er Étage Direction,Moyenne,S,"15,37"
+BAM-NDR_AG-PTRSF-01,ORIENTAL,NADOR AGENCE,BAM-NDR_AG,TRANSFORMATEUR 160KVA,ÉLECTRICITÉ,TRANSFORMATEUR MOYENNE TENSION,1,Local Transfo,Haute,H,"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52"`;
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'modele_planning_preventif_bam.csv');
+    link.setAttribute('download', 'modele_planning_multi_sites_bam.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -387,6 +467,18 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
         {/* Navigation Tabs */}
         <div className="flex border-b border-slate-200 bg-slate-50 px-6 gap-2 overflow-x-auto">
           <button
+            onClick={() => { setActiveTab('sites'); setImportStatus({ type: 'idle', message: '' }); }}
+            className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 ${
+              activeTab === 'sites'
+                ? 'border-blue-600 text-blue-600 bg-white shadow-2xs rounded-t-lg'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Globe2 className="w-4 h-4 text-emerald-600" />
+            1. Gestion & Jonglage Multi-Sites ({sites.length})
+          </button>
+
+          <button
             onClick={() => { setActiveTab('presets'); setImportStatus({ type: 'idle', message: '' }); }}
             className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 ${
               activeTab === 'presets'
@@ -395,7 +487,7 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
-            1. Chargement Rapide & Jeux Officiels
+            2. Plannings Pré-Configurés & Réseau
           </button>
 
           <button
@@ -407,7 +499,7 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
             }`}
           >
             <UploadCloud className="w-4 h-4 text-blue-600" />
-            2. Importer Fichiers (Excel / CSV / JSON)
+            3. Importer Fichiers (Excel / CSV / JSON)
           </button>
 
           <button
@@ -419,7 +511,7 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
             }`}
           >
             <Wrench className="w-4 h-4 text-emerald-600" />
-            3. Référentiel des Gammes Opératoires ({gammesList.length})
+            4. Référentiel des Gammes Opératoires ({gammesList.length})
           </button>
 
           <button
@@ -431,7 +523,7 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
             }`}
           >
             <Database className="w-4 h-4 text-slate-600" />
-            4. Diagnostic & Récapitulatif
+            5. Diagnostic & Récapitulatif
           </button>
         </div>
 
@@ -462,26 +554,288 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
         {/* Tab Content Area */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
-          {/* TAB 1: PRESETS & OFFICIAL DATASETS */}
+          {/* TAB: SITES MANAGEMENT & SWITCHING */}
+          {activeTab === 'sites' && (
+            <div className="space-y-6">
+              
+              {/* Intro Banner */}
+              <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white rounded-2xl p-5 border border-slate-800 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-amber-300 font-bold mb-1">
+                    <Globe2 className="w-4 h-4" />
+                    RÉSEAU MULTI-SITES BANK AL-MAGHRIB
+                  </div>
+                  <h3 className="text-base font-black text-white">
+                    Gérez et jonglez en toute fluidité entre vos agences régionales
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl">
+                    Sélectionnez un site pour concentrer vos opérations ou chargez la vue consolidée de tout le réseau BAM (Al Hoceima, Nador, Tanger, Oujda, Tétouan, Rabat).
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      onLoadAllSitesNetwork();
+                      setImportStatus({
+                        type: 'success',
+                        message: 'Réseau Multi-Sites BAM complet chargé ! Plus de 130 équipements répartis sur 6 sites.',
+                      });
+                    }}
+                    className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xs font-black rounded-xl flex items-center gap-2 shadow-md shadow-emerald-500/20 cursor-pointer transition-transform active:scale-95"
+                  >
+                    <Globe2 className="w-4 h-4" />
+                    Charger Tout le Réseau (Consolidé)
+                  </button>
+
+                  <button
+                    onClick={() => setShowAddSiteForm(prev => !prev)}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {showAddSiteForm ? 'Masquer le Formulaire' : 'Ajouter une Nouvelle Agence'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Add New Site Form */}
+              {showAddSiteForm && (
+                <form onSubmit={handleCreateSite} className="bg-slate-50 border-2 border-blue-200 rounded-2xl p-5 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <h4 className="text-xs font-black text-slate-900 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-blue-600" />
+                      Création d'un Nouveau Site / Agence BAM
+                    </h4>
+                    <span className="text-[11px] text-blue-700 font-medium">
+                      Intégration automatique dans le suivi 2026
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Code Site Unique *</label>
+                      <input
+                        type="text"
+                        value={newSiteCode}
+                        onChange={e => setNewSiteCode(e.target.value)}
+                        placeholder="Ex: BAM-FES_AG"
+                        required
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-hidden uppercase"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-0.5">Format: BAM-XXX_AG</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Nom de l'Agence *</label>
+                      <input
+                        type="text"
+                        value={newSiteName}
+                        onChange={e => setNewSiteName(e.target.value)}
+                        placeholder="Ex: Agence Fès"
+                        required
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Ville d'Implantation *</label>
+                      <input
+                        type="text"
+                        value={newSiteCity}
+                        onChange={e => setNewSiteCity(e.target.value)}
+                        placeholder="Ex: Fès"
+                        required
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Zone Géographique BAM</label>
+                      <select
+                        value={newSiteZone}
+                        onChange={e => setNewSiteZone(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                      >
+                        <option value="NORD">Zone NORD</option>
+                        <option value="ORIENTAL">Zone ORIENTAL</option>
+                        <option value="CENTRE">Zone CENTRE</option>
+                        <option value="SUD">Zone SUD</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Responsable Technique</label>
+                      <input
+                        type="text"
+                        value={newSiteManager}
+                        onChange={e => setNewSiteManager(e.target.value)}
+                        placeholder="Ex: M. Khalid Alaoui"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-hidden"
+                      />
+                    </div>
+
+                    <div className="flex items-center pt-5">
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-800 font-medium">
+                        <input
+                          type="checkbox"
+                          checked={autoGenEquipments}
+                          onChange={e => setAutoGenEquipments(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded-md border-slate-300"
+                        />
+                        <span>Auto-générer les 18 équipements standards (Transfo, GE, Climatisation, TGBT...)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddSiteForm(false)}
+                      className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-2"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Créer & Enregistrer le Site
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Sites Grid */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center justify-between">
+                  <span>Agences & Sites Enregistrés ({sites.length})</span>
+                  <span className="text-[11px] text-slate-500 font-normal">
+                    Cliquez sur « Activer » pour basculer la vue ou « Charger » pour isoler le jeu
+                  </span>
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {sites.map((site) => {
+                    const isSelected = selectedSiteCode === site.code;
+                    return (
+                      <div
+                        key={site.code}
+                        className={`rounded-2xl p-5 border-2 transition-all flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-blue-50/60 border-blue-500 shadow-md ring-2 ring-blue-500/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                              {site.code}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                              site.zone === 'NORD' 
+                                ? 'bg-sky-50 text-sky-700 border-sky-200' 
+                                : site.zone === 'ORIENTAL'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              Zone {site.zone}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h5 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+                              <MapPin className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-slate-400'}`} />
+                              {site.name}
+                            </h5>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Ville : <strong className="text-slate-700">{site.city}</strong>
+                            </p>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span>Responsable :</span>
+                              <span className="font-medium text-slate-800">{site.manager || 'Équipe BAM'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Contact :</span>
+                              <span className="font-mono text-slate-500 text-[10px]">{site.contact || 'tech@bkam.ma'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              onSelectSite(site.code);
+                              setImportStatus({
+                                type: 'success',
+                                message: `Affichage filtré sur l'agence : ${site.name} (${site.code})`,
+                              });
+                            }}
+                            className={`flex-1 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                Site Actif
+                              </>
+                            ) : (
+                              <>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                                Activer le Site
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              onLoadSitePlanning(site.code);
+                              setImportStatus({
+                                type: 'success',
+                                message: `Planning et équipements exclusifs de l'agence « ${site.name} » chargés !`,
+                              });
+                            }}
+                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 rounded-xl transition-colors cursor-pointer"
+                            title="Recharger spécifiquement le parc technique de ce site"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          )}
+          
+          {/* TAB 2: PRESETS & OFFICIAL DATASETS */}
           {activeTab === 'presets' && (
             <div className="space-y-5">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Sélectionnez un jeu de données pré-configuré pour l'Agence d'Al Hoceima
+                  Sélectionnez un jeu de données pré-configuré Bank Al-Maghrib
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Chargement instantané de la planification préventive 2026 avec gammes opératoires officielles et calcul des périodicités (H, M, T, S, A).
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 
-                {/* Preset 1: Full Year 2026 */}
+                {/* Preset 1: Full Year 2026 Al Hoceima */}
                 <div className="bg-slate-50 border-2 border-blue-200 hover:border-blue-500 rounded-2xl p-5 flex flex-col justify-between transition-all hover:shadow-md group">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        Officiel & Recommandé
+                        Officiel & Agence Pilote
                       </span>
                       <Building2 className="w-5 h-5 text-blue-600" />
                     </div>
@@ -508,10 +862,6 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
                         <span>Gammes opératoires :</span>
                         <strong className="text-emerald-700 font-bold">16 Gammes complètes</strong>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Codes Actions :</span>
-                        <strong className="text-blue-700 font-bold">80+ Points de contrôle</strong>
-                      </div>
                     </div>
                   </div>
 
@@ -520,16 +870,60 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
                     className="mt-5 w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Recharger Planning Annuel 2026
+                    Recharger Planning Al Hoceima
                   </button>
                 </div>
 
-                {/* Preset 2: Test Focus Avril */}
+                {/* Preset Multi-Sites Réseau Global */}
+                <div className="bg-gradient-to-b from-emerald-50/50 to-teal-50/40 border-2 border-emerald-300 hover:border-emerald-500 rounded-2xl p-5 flex flex-col justify-between transition-all hover:shadow-md group">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        Réseau Consolidé
+                      </span>
+                      <Globe2 className="w-5 h-5 text-emerald-600" />
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-emerald-800">
+                        Tout le Réseau Multi-Sites (6 Agences BAM)
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Agrège simultanément l'ensemble des parcs techniques d'Al Hoceima, Nador, Tanger, Oujda, Tétouan et Rabat.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5 pt-2 border-t border-emerald-200 text-[11px] text-slate-700">
+                      <div className="flex justify-between">
+                        <span>Agences couvertes :</span>
+                        <strong className="text-slate-900">6 Agences Régionales</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Parc Technique :</span>
+                        <strong className="text-emerald-900 font-bold">130+ Équipements</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Tâches Annuelles :</span>
+                        <strong className="text-slate-900">3 500+ Interventions</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleSelectPreset('all_sites_network')}
+                    className="mt-5 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Globe2 className="w-3.5 h-3.5" />
+                    Charger Tout le Réseau Multi-Sites
+                  </button>
+                </div>
+
+                {/* Preset 3: Test Focus Avril */}
                 <div className="bg-gradient-to-b from-amber-50/50 to-orange-50/40 border-2 border-amber-300 hover:border-amber-500 rounded-2xl p-5 flex flex-col justify-between transition-all hover:shadow-md group">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        Mode Test & Démonstration
+                        Mode Test BT
                       </span>
                       <Sparkles className="w-5 h-5 text-amber-600" />
                     </div>
@@ -539,7 +933,7 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
                         Jeu de Test Focus Avril 2026
                       </h4>
                       <p className="text-xs text-slate-600 mt-1">
-                        Idéal pour tester la génération des Bons de Travail (BT) sur les semaines 15, 16, 17 et 18 du mois d'Avril avec vérification des gammes.
+                        Idéal pour tester la génération des Bons de Travail (BT) sur les semaines 15, 16, 17 et 18 avec vérification des gammes.
                       </p>
                     </div>
 
@@ -549,30 +943,26 @@ PS-ASC-1M-01,PREVENTIF SYSTEMATIQUE MENSUEL ASCENSEUR,BAM-HCM_AG-ASC-01,M,2 - AC
                         <strong className="text-slate-900">Mois d'Avril (S15 à S18)</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span>Équipements actifs :</span>
-                        <strong className="text-slate-900">28 Équipements</strong>
-                      </div>
-                      <div className="flex justify-between">
                         <span>Bons de Travail :</span>
                         <strong className="text-amber-900 font-bold">Génération S15 à S18</strong>
                       </div>
                       <div className="flex justify-between">
-                        <span>Statuts simulés :</span>
-                        <strong className="text-emerald-800 font-bold">Conformes, Réserves, Retards</strong>
+                        <span>Gammes :</span>
+                        <strong className="text-slate-900">Catalogue complet</strong>
                       </div>
                     </div>
                   </div>
 
                   <button
                     onClick={() => handleSelectPreset('avril_test')}
-                    className="mt-5 w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                    className="mt-5 w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
-                    <FileCheck2 className="w-3.5 h-3.5" />
-                    Charger Focus Avril (S15 - S18)
+                    <FileCheck2 className="w-3.5 h-3.5 text-slate-950" />
+                    Charger Test Avril & Bons de Travail
                   </button>
                 </div>
 
-                {/* Preset 3: Gammes Catalog Sync */}
+                {/* Preset 4: Gammes Catalog Sync */}
                 <div className="bg-slate-50 border-2 border-slate-200 hover:border-emerald-500 rounded-2xl p-5 flex flex-col justify-between transition-all hover:shadow-md group">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">

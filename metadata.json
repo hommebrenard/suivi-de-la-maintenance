@@ -1,6 +1,6 @@
 {
   "name": "Suivi Maintenance Préventive",
-  "description": "Application professionnelle de suivi d'exécution du planning de maintenance préventive (Bank Al-Maghrib Al Hoceima) avec chargement des plannings, gammes opératoires, gestion des BTs et KPIs.",
+  "description": "Application professionnelle de suivi d'exécution du planning de maintenance préventive multi-sites Bank Al-Maghrib (Al Hoceima, Nador, Tanger, Oujda, Tétouan, Rabat) avec jonglage entre agences, chargement de plannings, gammes opératoires, gestion des BTs et KPIs.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

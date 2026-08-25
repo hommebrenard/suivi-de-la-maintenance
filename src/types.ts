@@ -89,6 +89,19 @@ export interface ExecutionRecord {
   updatedAt: string;
 }
 
+export interface SiteInfo {
+  code: string;        // e.g. "BAM-HCM_AG", "BAM-NDR_AG", "BAM-TNG_AG", "BAM-OJD_AG", "BAM-TTN_AG", "BAM-RBT_SG"
+  name: string;        // e.g. "Agence Al Hoceima", "Agence Nador", "Agence Tanger"
+  zone: string;        // e.g. "NORD", "ORIENTAL", "CENTRE"
+  city: string;        // e.g. "Al Hoceima", "Nador", "Tanger", "Oujda", "Rabat"
+  address?: string;
+  manager?: string;    // e.g. "Chef de Centre / Responsable Maintenance"
+  contact?: string;    // e.g. "tech@bkam.ma"
+  equipmentsCount?: number;
+  color?: string;
+  isCustom?: boolean;
+}
+
 export interface WeekInfo {
   weekNumber: number;
   monthName: string;
@@ -98,6 +111,7 @@ export interface WeekInfo {
 
 export interface FilterOptions {
   searchQuery: string;
+  siteCode?: string;
   lot: string;
   family: string;
   frequency: string;
@@ -121,6 +135,7 @@ export interface PlanningDatasetInfo {
   tasksCount: number;
   gammesCount: number;
   description: string;
+  siteCode?: string;
 }
 
 export interface KPIStats {
@@ -135,4 +150,13 @@ export interface KPIStats {
     electricite: { total: number; done: number; rate: number };
     fluide: { total: number; done: number; rate: number };
   };
+  bySite?: Record<string, { 
+    name: string; 
+    zone: string; 
+    total: number; 
+    done: number; 
+    rate: number; 
+    conformity: number; 
+    overdue: number 
+  }>;
 }
