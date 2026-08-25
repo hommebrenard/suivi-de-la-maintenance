@@ -35,6 +35,7 @@ export interface PlannedTask {
 export interface ChecklistItem {
   id: string;
   label: string;
+  actionCode?: string;      // e.g. "1 - ACT266", "PS-ASC-1H-01"
   category?: string;
   mandatory?: boolean;
   checked: boolean;
@@ -43,10 +44,36 @@ export interface ChecklistItem {
   expectedRange?: string;
 }
 
+export interface WorkOrderBT {
+  id: string;                // e.g. BT-2026-04-001
+  btNumber: string;          // Official BT reference e.g. BT-BAM-HCM-2026-0415
+  equipmentId: string;
+  equipmentDesc: string;
+  taskCode: string;          // e.g. PS-GPLC-1H-01
+  frequency: FrequencyType;
+  weekNumber: number;
+  monthName: string;
+  status: 'GÉNÉRÉ' | 'EN_COURS' | 'EXÉCUTÉ' | 'NON_CONFORME' | 'REPORTÉ';
+  creationDate: string;
+  scheduledDate: string;
+  technicianName: string;
+  technicianRole: string;
+  checklist: ChecklistItem[];
+  measuredVoltage?: string;
+  measuredCurrent?: string;
+  measuredPressure?: string;
+  measuredTemp?: string;
+  measuredFrequency?: string;
+  measuredLoadFactor?: string;
+  observations?: string;
+  correctiveAction?: string;
+}
+
 export interface ExecutionRecord {
   taskId: string;
   equipmentId: string;
   weekNumber: number;
+  btNumber?: string;         // Linked BT reference
   status: ExecutionStatus;
   executionDate?: string;    // YYYY-MM-DD
   technicianName?: string;
@@ -76,6 +103,24 @@ export interface FilterOptions {
   frequency: string;
   status: string;
   weekNumber?: number | 'all';
+}
+
+export interface GammeOperatoire {
+  codeGamme: string;
+  descriptionGamme: string;
+  equipmentPrefixId: string; // e.g. "BAM-HCM_AG-ASC-01" or match by equipment family
+  frequency: FrequencyType;
+  items: ChecklistItem[];
+}
+
+export interface PlanningDatasetInfo {
+  name: string;
+  source: 'preset' | 'file_import' | 'manual';
+  loadedAt: string;
+  equipmentsCount: number;
+  tasksCount: number;
+  gammesCount: number;
+  description: string;
 }
 
 export interface KPIStats {

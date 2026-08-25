@@ -1,6 +1,6 @@
 {
   "name": "Suivi Maintenance Préventive",
-  "description": "Application interactive de suivi d'exécution du planning de maintenance préventive basée sur la matrice d'équipements et la timeline d'intervention.",
+  "description": "Application professionnelle de suivi d'exécution du planning de maintenance préventive (Bank Al-Maghrib Al Hoceima) avec chargement des plannings, gammes opératoires, gestion des BTs et KPIs.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

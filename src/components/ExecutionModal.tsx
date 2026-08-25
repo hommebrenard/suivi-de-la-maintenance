@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Equipment, PlannedTask, ExecutionRecord, ExecutionStatus, ChecklistItem } from '../types';
+import { Equipment, PlannedTask, ExecutionRecord, ExecutionStatus, ChecklistItem, GammeOperatoire } from '../types';
+import { getGammeForEquipment } from '../data/gammesData';
 import { 
   X, 
   CheckCircle2, 
@@ -16,7 +17,8 @@ import {
   Wrench,
   Building,
   MapPin,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 
 interface ExecutionModalProps {
@@ -26,6 +28,7 @@ interface ExecutionModalProps {
   equipment: Equipment | null;
   existingExecution?: ExecutionRecord;
   onSaveExecution: (record: ExecutionRecord) => void;
+  gammesList?: GammeOperatoire[];
 }
 
 export const ExecutionModal: React.FC<ExecutionModalProps> = ({
@@ -35,8 +38,12 @@ export const ExecutionModal: React.FC<ExecutionModalProps> = ({
   equipment,
   existingExecution,
   onSaveExecution,
+  gammesList,
 }) => {
   if (!isOpen || !task || !equipment) return null;
+
+  // Compute BT Code
+  const btNumber = existingExecution?.btNumber || `BT-HCM-2026-S${String(task.weekNumber).padStart(2, '0')}-${equipment.id.replace('BAM-HCM_AG-', '')}`;
 
   // Form State
   const [status, setStatus] = useState<ExecutionStatus>(
@@ -58,27 +65,29 @@ export const ExecutionModal: React.FC<ExecutionModalProps> = ({
     existingExecution?.correctiveAction || ''
   );
   const [measuredVoltage, setMeasuredVoltage] = useState(
-    existingExecution?.measuredVoltage || '400 V'
+    existingExecution?.measuredVoltage || '400 V / 230 V'
   );
   const [measuredCurrent, setMeasuredCurrent] = useState(
     existingExecution?.measuredCurrent || '12.5 A'
   );
 
-  // Default checklist based on equipment family
+  // Load exact Gamme Checklist items from user dataset
   const [checklist, setChecklist] = useState<ChecklistItem[]>(() => {
     if (existingExecution?.checklist && existingExecution.checklist.length > 0) {
       return existingExecution.checklist;
     }
-    
-    // Default dynamic checklist items
-    return [
-      { id: '1', label: 'Inspection visuelle générale et nettoyage de la structure/filtres', checked: true },
-      { id: '2', label: 'Vérification des fixations mécaniques et serrage des connexions', checked: true },
-      { id: '3', label: 'Mesures électriques / hydrauliques de fonctionnement', checked: true, valueMeasured: 'Conforme' },
-      { id: '4', label: 'Test d auto-diagnostic et contrôle des sécurités', checked: true },
-      { id: '5', label: 'Contrôle d absence de bruits, vibrations ou fuites anormales', checked: true },
-    ];
+    return getGammeForEquipment(equipment.id, task.frequency, gammesList);
   });
+
+  useEffect(() => {
+    if (equipment && task) {
+      if (existingExecution?.checklist && existingExecution.checklist.length > 0) {
+        setChecklist(existingExecution.checklist);
+      } else {
+        setChecklist(getGammeForEquipment(equipment.id, task.frequency, gammesList));
+      }
+    }
+  }, [equipment, task, existingExecution, gammesList]);
 
   const toggleCheckitem = (id: string) => {
     setChecklist(items =>
@@ -93,6 +102,7 @@ export const ExecutionModal: React.FC<ExecutionModalProps> = ({
       taskId: task.id,
       equipmentId: equipment.id,
       weekNumber: task.weekNumber,
+      btNumber,
       status,
       executionDate,
       technicianName,
@@ -122,10 +132,14 @@ export const ExecutionModal: React.FC<ExecutionModalProps> = ({
         <div className="bg-slate-900 text-white p-5 px-6 flex items-start justify-between border-b border-slate-800">
           <div>
             <div className="flex items-center gap-2 text-xs text-blue-400 font-semibold mb-1">
-              <Building className="w-3.5 h-3.5" />
+              <Building className="w-3.5 h-3.5 text-blue-400" />
               BANK AL-MAGHRIB • AGENCE AL HOCEIMA
               <span className="text-slate-500">•</span>
               <span className="text-amber-300 font-bold">SEMAINE {task.weekNumber}</span>
+              <span className="text-slate-500">•</span>
+              <span className="bg-blue-600/60 text-white px-2 py-0.5 rounded text-[10px] font-mono font-bold border border-blue-400/40">
+                {btNumber}
+              </span>
             </div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <Wrench className="w-5 h-5 text-blue-400" />

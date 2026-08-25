@@ -1,27 +1,43 @@
 import React, { useState, useMemo } from 'react';
-import { Equipment, PlannedTask, ExecutionRecord, KPIStats } from './types';
-import { WEEKS_2026, EQUIPMENTS_DATA, generatePlannedTasks, generateInitialExecutions } from './data/maintenanceData';
+import { Equipment, PlannedTask, ExecutionRecord, KPIStats, GammeOperatoire, PlanningDatasetInfo } from './types';
+import { WEEKS_2026, EQUIPMENTS_DATA, generatePlannedTasks, generateInitialExecutions, getCurrentISOWeekNumber } from './data/maintenanceData';
+import { GAMMES_CATALOG } from './data/gammesData';
 import { Header } from './components/Header';
 import { KPIOverview } from './components/KPIOverview';
 import { TimelineExecutionView } from './components/TimelineExecutionView';
 import { MatrixScheduleView } from './components/MatrixScheduleView';
 import { KPIDashboardView } from './components/KPIDashboardView';
+import { WorkOrdersBTView } from './components/WorkOrdersBTView';
 import { AIAssistantDrawer } from './components/AIAssistantDrawer';
 import { ExecutionModal } from './components/ExecutionModal';
 import { AddEquipmentModal } from './components/AddEquipmentModal';
+import { LoadPlanningModal } from './components/LoadPlanningModal';
 
 export default function App() {
-  const currentWeekNumber = 33; // Current Week 33 (Mid-August 2026)
+  // Real ISO week detection (S35 for August 25, 2026: 24/08 au 30/08/2026)
+  const [currentWeekNumber, setCurrentWeekNumber] = useState<number>(() => getCurrentISOWeekNumber());
 
   // Core State
   const [equipments, setEquipments] = useState<Equipment[]>(EQUIPMENTS_DATA);
   const [tasks, setTasks] = useState<PlannedTask[]>(() => generatePlannedTasks());
   const [executions, setExecutions] = useState<Record<string, ExecutionRecord>>(() => 
-    generateInitialExecutions(generatePlannedTasks())
+    generateInitialExecutions(generatePlannedTasks(), getCurrentISOWeekNumber())
   );
+  const [gammesList, setGammesList] = useState<GammeOperatoire[]>(GAMMES_CATALOG);
+
+  // Dataset Information State
+  const [datasetInfo, setDatasetInfo] = useState<PlanningDatasetInfo>({
+    name: 'Planning BAM Al Hoceima 2026 (Officiel)',
+    source: 'preset',
+    loadedAt: 'Automatique (Exercice 2026)',
+    equipmentsCount: EQUIPMENTS_DATA.length,
+    tasksCount: 852,
+    gammesCount: GAMMES_CATALOG.length,
+    description: 'Planning annuel 52 semaines pour les 28 équipements de l\'Agence BAM Al Hoceima avec 16 gammes opératoires',
+  });
 
   // View Navigation State
-  const [currentView, setCurrentView] = useState<'timeline' | 'matrix' | 'kpi' | 'ai'>('timeline');
+  const [currentView, setCurrentView] = useState<'timeline' | 'matrix' | 'bt' | 'kpi' | 'ai'>('timeline');
 
   // Modal State for Task Execution Validation
   const [activeModalData, setActiveModalData] = useState<{
@@ -32,6 +48,9 @@ export default function App() {
 
   // Modal State for Adding Equipment
   const [isAddEquipmentOpen, setIsAddEquipmentOpen] = useState(false);
+
+  // Modal State for Loading Planning & Gammes
+  const [isLoadPlanningOpen, setIsLoadPlanningOpen] = useState(false);
 
   // Compute Global KPI Statistics
   const stats: KPIStats = useMemo(() => {
@@ -121,15 +140,92 @@ export default function App() {
     // Generate new tasks for new equipment
     const newTasks = generatePlannedTasks().filter(t => t.equipmentId === newEq.id);
     setTasks(prev => [...prev, ...newTasks]);
+    setDatasetInfo(prev => ({
+      ...prev,
+      equipmentsCount: prev.equipmentsCount + 1,
+      tasksCount: prev.tasksCount + newTasks.length,
+    }));
+  };
+
+  // Load Preset Datasets
+  const handleLoadPreset = (presetType: 'official_2026' | 'avril_test' | 'gammes_only') => {
+    if (presetType === 'official_2026') {
+      const initialTasks = generatePlannedTasks();
+      setEquipments(EQUIPMENTS_DATA);
+      setTasks(initialTasks);
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setDatasetInfo({
+        name: 'Planning BAM Al Hoceima 2026 (Complet)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Jeu complet 2026 avec 28 équipements, 52 semaines et 16 gammes opératoires',
+      });
+    } else if (presetType === 'avril_test') {
+      const initialTasks = generatePlannedTasks();
+      setEquipments(EQUIPMENTS_DATA);
+      setTasks(initialTasks);
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setCurrentView('bt'); // Automatically switch to Bons de Travail view for test
+      setDatasetInfo({
+        name: 'Focus Test Mois d\'Avril (S15 à S18)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.filter(t => t.weekNumber >= 15 && t.weekNumber <= 18).length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Test spécial ciblant le mois d\'Avril pour l\'Agence BAM Al Hoceima avec génération BTs',
+      });
+    } else if (presetType === 'gammes_only') {
+      setGammesList(GAMMES_CATALOG);
+      setDatasetInfo(prev => ({
+        ...prev,
+        gammesCount: GAMMES_CATALOG.length,
+        loadedAt: new Date().toLocaleTimeString(),
+      }));
+    }
+  };
+
+  // Import custom planning from file
+  const handleImportPlanning = (newEquipments: Equipment[], newTasks: PlannedTask[], newGammes?: GammeOperatoire[]) => {
+    setEquipments(newEquipments);
+    setTasks(newTasks);
+    setExecutions(generateInitialExecutions(newTasks, currentWeekNumber));
+    if (newGammes && newGammes.length > 0) {
+      setGammesList(newGammes);
+    }
+    setDatasetInfo({
+      name: 'Planning Importé (Fichier Personnalisé)',
+      source: 'file_import',
+      loadedAt: new Date().toLocaleTimeString(),
+      equipmentsCount: newEquipments.length,
+      tasksCount: newTasks.length,
+      gammesCount: newGammes ? newGammes.length : gammesList.length,
+      description: 'Données importées avec succès via fichier externe',
+    });
+  };
+
+  // Update gammes catalogue
+  const handleUpdateGammes = (newGammes: GammeOperatoire[]) => {
+    setGammesList(newGammes);
+    setDatasetInfo(prev => ({
+      ...prev,
+      gammesCount: newGammes.length,
+      loadedAt: new Date().toLocaleTimeString(),
+    }));
   };
 
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(
-      JSON.stringify({ equipments, tasks, executions, stats }, null, 2)
+      JSON.stringify({ equipments, tasks, executions, gammesList, stats, datasetInfo }, null, 2)
     );
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `Suivi_Maintenance_BAM_Al_Hoceima_S${currentWeekNumber}.json`);
+    downloadAnchor.setAttribute("download", `Planning_Maintenance_BAM_Al_Hoceima_S${currentWeekNumber}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -140,7 +236,17 @@ export default function App() {
       const initialTasks = generatePlannedTasks();
       setEquipments(EQUIPMENTS_DATA);
       setTasks(initialTasks);
-      setExecutions(generateInitialExecutions(initialTasks));
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setDatasetInfo({
+        name: 'Planning BAM Al Hoceima 2026 (Officiel)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Planning officiel 2026 réinitialisé',
+      });
     }
   };
 
@@ -152,9 +258,12 @@ export default function App() {
         currentView={currentView}
         setCurrentView={setCurrentView}
         onOpenAddModal={() => setIsAddEquipmentOpen(true)}
+        onOpenLoadModal={() => setIsLoadPlanningOpen(true)}
         onExportData={handleExportData}
         onResetData={handleResetData}
         currentWeekNumber={currentWeekNumber}
+        onWeekChange={setCurrentWeekNumber}
+        datasetInfo={datasetInfo}
       />
 
       {/* Global Realization KPI Summary */}
@@ -184,6 +293,19 @@ export default function App() {
           />
         )}
 
+        {currentView === 'bt' && (
+          <WorkOrdersBTView
+            equipments={equipments}
+            tasks={tasks}
+            executions={executions}
+            weeks={WEEKS_2026}
+            currentWeekNumber={currentWeekNumber}
+            onSelectTask={handleSelectTask}
+            onSaveExecution={handleSaveExecution}
+            gammesList={gammesList}
+          />
+        )}
+
         {currentView === 'kpi' && (
           <KPIDashboardView
             stats={stats}
@@ -204,6 +326,19 @@ export default function App() {
         )}
       </main>
 
+      {/* Load & Manage Planning / Gammes Modal */}
+      <LoadPlanningModal
+        isOpen={isLoadPlanningOpen}
+        onClose={() => setIsLoadPlanningOpen(false)}
+        datasetInfo={datasetInfo}
+        gammesList={gammesList}
+        onLoadPreset={handleLoadPreset}
+        onImportPlanning={handleImportPlanning}
+        onUpdateGammes={handleUpdateGammes}
+        onResetToDefault={handleResetData}
+        currentWeekNumber={currentWeekNumber}
+      />
+
       {/* Task Execution Validation Modal */}
       {activeModalData && (
         <ExecutionModal
@@ -213,6 +348,7 @@ export default function App() {
           equipment={activeModalData.equipment}
           existingExecution={activeModalData.execution}
           onSaveExecution={handleSaveExecution}
+          gammesList={gammesList}
         />
       )}
 

@@ -1,4 +1,15 @@
-import { Equipment, PlannedTask, WeekInfo, ExecutionRecord, FrequencyType } from '../types';
+import { Equipment, PlannedTask, WeekInfo, ExecutionRecord, FrequencyType, WorkOrderBT } from '../types';
+import { getGammeForEquipment } from './gammesData';
+
+export function getCurrentISOWeekNumber(date: Date = new Date()): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  // Ensure within 1-52/53 range, fallback to 35 for August 2026
+  return (weekNo >= 1 && weekNo <= 53) ? weekNo : 35;
+}
 
 export const WEEKS_2026: WeekInfo[] = [
   { weekNumber: 1, monthName: 'JANVIER', startDate: '29/12' },
@@ -33,9 +44,9 @@ export const WEEKS_2026: WeekInfo[] = [
   { weekNumber: 30, monthName: 'JUILLET', startDate: '20/07' },
   { weekNumber: 31, monthName: 'JUILLET', startDate: '27/07' },
   { weekNumber: 32, monthName: 'AOÛT', startDate: '03/08' },
-  { weekNumber: 33, monthName: 'AOÛT', startDate: '10/08', isCurrentWeek: true },
+  { weekNumber: 33, monthName: 'AOÛT', startDate: '10/08' },
   { weekNumber: 34, monthName: 'AOÛT', startDate: '17/08' },
-  { weekNumber: 35, monthName: 'AOÛT', startDate: '24/08' },
+  { weekNumber: 35, monthName: 'AOÛT', startDate: '24/08', isCurrentWeek: true },
   { weekNumber: 36, monthName: 'AOÛT', startDate: '31/08' },
   { weekNumber: 37, monthName: 'SEPTEMBRE', startDate: '07/09' },
   { weekNumber: 38, monthName: 'SEPTEMBRE', startDate: '14/09' },
@@ -505,14 +516,16 @@ export function generatePlannedTasks(): PlannedTask[] {
   return tasks;
 }
 
-// Generate realistic initial execution status records (Current week = 33)
-export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, ExecutionRecord> {
+// Generate realistic initial execution status records (Current week = 35 - 24/08 au 30/08/2026)
+export function generateInitialExecutions(tasks: PlannedTask[], currentWeek: number = 35): Record<string, ExecutionRecord> {
   const executions: Record<string, ExecutionRecord> = {};
-  const currentWeek = 33;
 
   tasks.forEach((t) => {
+    const gammeItems = getGammeForEquipment(t.equipmentId, t.frequency);
+    const btCode = `BT-HCM-2026-S${String(t.weekNumber).padStart(2, '0')}-${t.equipmentId.replace('BAM-HCM_AG-', '')}`;
+
     if (t.weekNumber < currentWeek) {
-      // Past weeks: mostly completed / compliant, some with minor defects or occasional delay
+      // Past weeks (S1 to S34): mostly completed / compliant
       const seed = (t.weekNumber * 17 + t.equipmentId.length * 13) % 100;
       if (seed < 82) {
         // Conforme
@@ -520,18 +533,14 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'conforme',
           executionDate: `2026-0${Math.min(9, Math.ceil(t.weekNumber / 4))}-${10 + (seed % 15)}`,
           technicianName: seed % 2 === 0 ? 'Karim Bennani (Haroon PM)' : 'Youssef El Amrani',
           technicianRole: 'Technicien Senior Maintenance',
           durationMinutes: 45,
-          checklist: [
-            { id: '1', label: 'Inspection visuelle et nettoyage externe', checked: true },
-            { id: '2', label: 'Vérification des connexions électriques', checked: true },
-            { id: '3', label: 'Contrôle des paramètres de fonctionnement', checked: true, valueMeasured: 'Normal' },
-            { id: '4', label: 'Essai de fonctionnement à vide et en charge', checked: true },
-          ],
-          observations: 'RAS - Équipement en parfait état de fonctionnement.',
+          checklist: gammeItems.map(item => ({ ...item, checked: true })),
+          observations: 'RAS - Intervention réalisée conformément à la gamme opératoire.',
           updatedAt: new Date().toISOString(),
         };
       } else if (seed < 91) {
@@ -540,18 +549,15 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'non_conforme',
           executionDate: `2026-0${Math.min(9, Math.ceil(t.weekNumber / 4))}-${12 + (seed % 10)}`,
           technicianName: 'Karim Bennani (Haroon PM)',
           technicianRole: 'Technicien Senior Maintenance',
           durationMinutes: 60,
-          checklist: [
-            { id: '1', label: 'Inspection visuelle', checked: true },
-            { id: '2', label: 'Nettoyage filtres / ailettes', checked: true },
-            { id: '3', label: 'Niveau de fluide / Huile', checked: false, comment: 'Niveau bas détecté' },
-          ],
-          observations: 'Anomalie détectée : légère baisse de pression / filtre encrassé. Pièce de rechange commandée.',
-          correctiveAction: 'Remplacement de filtre programmé pour la semaine prochaine.',
+          checklist: gammeItems.map((item, idx) => ({ ...item, checked: idx !== 1 })),
+          observations: 'Anomalie mineure détectée sur le point 2 de la gamme. Pièce ou contrôle complémentaire requis.',
+          correctiveAction: 'Inscrire dans le registre d entretien et commander consommable.',
           updatedAt: new Date().toISOString(),
         };
       } else {
@@ -560,29 +566,28 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'retard',
-          checklist: [],
-          observations: 'Intervention reportée en raison d indisponibilité de l accès au local technique lors du passage.',
+          checklist: gammeItems.map(item => ({ ...item, checked: false })),
+          observations: 'Intervention reportée en raison d indisponibilité temporaire de l accès.',
           updatedAt: new Date().toISOString(),
         };
       }
     } else if (t.weekNumber === currentWeek) {
-      // Current week (Week 33): mixture of In Progress, Completed, or Pending
+      // Current week (Week 35 - 24/08 au 30/08/2026)
       const seed = (t.equipmentId.length * 7) % 10;
       if (seed < 4) {
         executions[t.id] = {
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'conforme',
-          executionDate: '2026-08-11',
+          executionDate: '2026-08-25',
           technicianName: 'Omar Tazi',
           technicianRole: 'Inspecteur Réseau BAM',
-          checklist: [
-            { id: '1', label: 'Contrôle des isolements et mises à la terre', checked: true },
-            { id: '2', label: 'Mesure de tension de sortie', checked: true, valueMeasured: '398 V' },
-          ],
-          observations: 'Maintenance préventive S33 effectuée avec succès.',
+          checklist: gammeItems.map(item => ({ ...item, checked: true })),
+          observations: 'Maintenance préventive S35 effectuée avec succès.',
           updatedAt: new Date().toISOString(),
         };
       } else if (seed < 7) {
@@ -590,15 +595,13 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'en_cours',
-          executionDate: '2026-08-12',
+          executionDate: '2026-08-25',
           technicianName: 'Karim Bennani (Haroon PM)',
           technicianRole: 'Technicien Référent',
-          checklist: [
-            { id: '1', label: 'Vérification visuelle', checked: true },
-            { id: '2', label: 'Contrôle des filtres', checked: false },
-          ],
-          observations: 'Intervention en cours de finalisation sur site.',
+          checklist: gammeItems.map((item, idx) => ({ ...item, checked: idx === 0 })),
+          observations: 'Intervention S35 en cours de réalisation sur site ce jour.',
           updatedAt: new Date().toISOString(),
         };
       } else {
@@ -606,8 +609,9 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
           taskId: t.id,
           equipmentId: t.equipmentId,
           weekNumber: t.weekNumber,
+          btNumber: btCode,
           status: 'planifie',
-          checklist: [],
+          checklist: gammeItems.map(item => ({ ...item, checked: false })),
           updatedAt: new Date().toISOString(),
         };
       }
@@ -617,8 +621,9 @@ export function generateInitialExecutions(tasks: PlannedTask[]): Record<string, 
         taskId: t.id,
         equipmentId: t.equipmentId,
         weekNumber: t.weekNumber,
+        btNumber: btCode,
         status: 'planifie',
-        checklist: [],
+        checklist: gammeItems.map(item => ({ ...item, checked: false })),
         updatedAt: new Date().toISOString(),
       };
     }
