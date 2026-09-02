@@ -353,9 +353,33 @@ export default function App() {
       });
     }
 
-    setEquipments(newEquipments);
-    setTasks(newTasks);
-    setExecutions(generateInitialExecutions(newTasks, currentWeekNumber));
+    // Fusionner avec l'existant au lieu d'écraser : sinon un import (ex. mai)
+    // effaçait silencieusement les équipements/tâches d'un import précédent (ex. avril).
+    // Dédoublonnage par id : en cas de collision, la version nouvellement importée gagne.
+    let mergedEquipmentsCount = 0;
+    let mergedTasksCount = 0;
+
+    setEquipments(prev => {
+      const merged = new Map(prev.map(e => [e.id, e]));
+      newEquipments.forEach(e => merged.set(e.id, e));
+      mergedEquipmentsCount = merged.size;
+      return Array.from(merged.values());
+    });
+
+    setTasks(prev => {
+      const merged = new Map(prev.map(t => [t.id, t]));
+      newTasks.forEach(t => merged.set(t.id, t));
+      mergedTasksCount = merged.size;
+      return Array.from(merged.values());
+    });
+
+    // Les exécutions déjà enregistrées (pointages, statuts) sont conservées ;
+    // on ajoute uniquement les exécutions initiales pour les nouvelles tâches importées.
+    setExecutions(prev => ({
+      ...generateInitialExecutions(newTasks, currentWeekNumber),
+      ...prev,
+    }));
+
     if (newGammes && newGammes.length > 0) {
       setGammesList(newGammes);
     }
@@ -364,8 +388,8 @@ export default function App() {
       name: 'Planning Importé (Fichier Personnalisé)',
       source: 'file_import',
       loadedAt: new Date().toLocaleTimeString(),
-      equipmentsCount: newEquipments.length,
-      tasksCount: newTasks.length,
+      equipmentsCount: mergedEquipmentsCount,
+      tasksCount: mergedTasksCount,
       gammesCount: newGammes ? newGammes.length : gammesList.length,
       description: `Données importées avec succès (${newEquipments.length} équipements sur ${detectedSitesMap.size || 1} site(s))`,
     });
