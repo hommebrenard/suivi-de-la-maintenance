@@ -1,36 +1,59 @@
 import React, { useState } from 'react';
-import { Equipment, LotType } from '../types';
+import { Equipment, LotType, SiteInfo } from '../types';
 import { X, Plus, Building, Wrench } from 'lucide-react';
 
 interface AddEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddEquipment: (newEq: Equipment) => void;
+  activeSite: SiteInfo;
+  existingEquipmentIds: string[];
 }
 
 export const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
   isOpen,
   onClose,
   onAddEquipment,
+  activeSite,
+  existingEquipmentIds,
 }) => {
   if (!isOpen) return null;
 
-  const [id, setId] = useState('BAM-HCM_AG-NEW-01');
+  // Génère un identifiant unique basé sur le site actif, pour éviter
+  // toute collision avec un équipement existant (même si l'utilisateur
+  // ne modifie pas le champ manuellement).
+  const generateUniqueId = () => {
+    let n = 1;
+    let candidate = `${activeSite.code}-NEW-${String(n).padStart(2, '0')}`;
+    while (existingEquipmentIds.includes(candidate)) {
+      n += 1;
+      candidate = `${activeSite.code}-NEW-${String(n).padStart(2, '0')}`;
+    }
+    return candidate;
+  };
+
+  const [id, setId] = useState(generateUniqueId);
   const [description, setDescription] = useState('');
   const [lot, setLot] = useState<LotType>('ÉLECTRICITÉ');
   const [family, setFamily] = useState('TABLEAU ELECTRIQUE');
   const [location, setLocation] = useState('RDC Local Technique');
   const [criticality, setCriticality] = useState<'Haute' | 'Moyenne' | 'Basse'>('Moyenne');
+  const [idError, setIdError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description) return;
 
+    if (existingEquipmentIds.includes(id)) {
+      setIdError('Cet identifiant existe déjà. Choisissez-en un autre.');
+      return;
+    }
+
     const newEq: Equipment = {
       id,
-      zone: 'NORD',
-      site: 'AL HOCEIMA AGENCE',
-      codeSite: 'BAM-HCM_AG',
+      zone: activeSite.zone || 'NORD',
+      site: activeSite.name,
+      codeSite: activeSite.code,
       description: description.toUpperCase(),
       lot,
       family,
@@ -54,7 +77,7 @@ export const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
               <Plus className="w-5 h-5 text-blue-400" />
               Ajouter un Nouvel Équipement au Planning
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">Bank Al-Maghrib Agence Al Hoceima</p>
+            <p className="text-xs text-slate-400 mt-0.5">Bank Al-Maghrib {activeSite.name}</p>
           </div>
           <button
             onClick={onClose}
@@ -73,10 +96,13 @@ export const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
             <input
               type="text"
               value={id}
-              onChange={e => setId(e.target.value)}
+              onChange={e => { setId(e.target.value); setIdError(''); }}
               className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
               required
             />
+            {idError && (
+              <p className="text-red-600 font-semibold mt-1">{idError}</p>
+            )}
           </div>
 
           <div>
