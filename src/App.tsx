@@ -560,6 +560,8 @@ export default function App() {
         isOpen={isAddEquipmentOpen}
         onClose={() => setIsAddEquipmentOpen(false)}
         onAddEquipment={handleAddEquipment}
+        activeSite={activeSiteInfo || sites[0]}
+        existingEquipmentIds={equipments.map(e => e.id)}
       />
 
       {/* Footer */}
