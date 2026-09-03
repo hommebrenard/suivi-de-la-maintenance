@@ -1,598 +1,577 @@
-import React, { useState } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { WorkOrdersView } from './components/views/WorkOrdersView';
-import { RequestsView } from './components/views/RequestsView';
-import { MessagesView } from './components/views/MessagesView';
-import { ReportsView } from './components/views/ReportsView';
-import { AutomationsView } from './components/views/AutomationsView';
-import { MetersView } from './components/views/MetersView';
-import { EquipmentView } from './components/views/EquipmentView';
-import { InventoryView } from './components/views/InventoryView';
-import { PreventiveView } from './components/views/PreventiveView';
-import { TemplatesView } from './components/views/TemplatesView';
-import { ProceduresView } from './components/views/ProceduresView';
-import { TagsView } from './components/views/TagsView';
-import { LocationsView } from './components/views/LocationsView';
-import { UsersView } from './components/views/UsersView';
-import { SuppliersView } from './components/views/SuppliersView';
-import { ClientsView } from './components/views/ClientsView';
-
-import {
-  INITIAL_WORK_ORDERS,
-  INITIAL_REQUESTS,
-  INITIAL_CONVERSATIONS,
-  INITIAL_MESSAGES,
-  INITIAL_EQUIPMENT,
-  INITIAL_INVENTORY,
-  INITIAL_AUTOMATIONS,
-  INITIAL_METERS,
-  INITIAL_TEMPLATES,
-  INITIAL_PROCEDURES,
-  INITIAL_TAGS,
-  INITIAL_LOCATIONS,
-  INITIAL_USERS,
-  INITIAL_SUPPLIERS,
-  INITIAL_CLIENTS
-} from './data/mockData';
-
-import {
-  NavigationItem,
-  WorkOrder,
-  MaintenanceRequest,
-  Conversation,
-  Message,
-  Equipment,
-  InventoryItem,
-  AutomationRule,
-  Meter,
-  WorkOrderTemplate,
-  Procedure,
-  Tag,
-  LocationItem,
-  UserItem,
-  SupplierItem,
-  ClientItem,
-  WorkOrderStatus,
-  OperationalStatus
-} from './types';
-
-// Helper for localStorage state persistence
-function getInitialState<T>(key: string, fallback: T): T {
-  try {
-    const saved = localStorage.getItem(key);
-    if (saved !== null) {
-      return JSON.parse(saved);
-    }
-  } catch (e) {
-    console.error(`Erreur chargement ${key} depuis localStorage:`, e);
-  }
-  return fallback;
-}
+import React, { useState, useMemo } from 'react';
+import { Equipment, PlannedTask, ExecutionRecord, KPIStats, GammeOperatoire, PlanningDatasetInfo, SiteInfo } from './types';
+import { 
+  WEEKS_2026, 
+  EQUIPMENTS_DATA, 
+  DEFAULT_SITES, 
+  generateEquipmentsForSite, 
+  MULTI_SITE_PRESET_EQUIPMENTS, 
+  generatePlannedTasks, 
+  generateInitialExecutions, 
+  getCurrentISOWeekNumber 
+} from './data/maintenanceData';
+import { GAMMES_CATALOG } from './data/gammesData';
+import { Header } from './components/Header';
+import { KPIOverview } from './components/KPIOverview';
+import { TimelineExecutionView } from './components/TimelineExecutionView';
+import { MatrixScheduleView } from './components/MatrixScheduleView';
+import { KPIDashboardView } from './components/KPIDashboardView';
+import { WorkOrdersBTView } from './components/WorkOrdersBTView';
+import { AIAssistantDrawer } from './components/AIAssistantDrawer';
+import { ExecutionModal } from './components/ExecutionModal';
+import { AddEquipmentModal } from './components/AddEquipmentModal';
+import { LoadPlanningModal } from './components/LoadPlanningModal';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<NavigationItem>('work-orders');
+  // Real ISO week detection (S35 for August 25, 2026: 24/08 au 30/08/2026)
+  const [currentWeekNumber, setCurrentWeekNumber] = useState<number>(() => getCurrentISOWeekNumber());
 
-  // App Centralized State with localStorage persistence
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>(() =>
-    getInitialState('gmao_workOrders', INITIAL_WORK_ORDERS)
-  );
-  const [requests, setRequests] = useState<MaintenanceRequest[]>(() =>
-    getInitialState('gmao_requests', INITIAL_REQUESTS)
-  );
-  const [conversations, setConversations] = useState<Conversation[]>(() =>
-    getInitialState('gmao_conversations', INITIAL_CONVERSATIONS)
-  );
-  const [messages, setMessages] = useState<Message[]>(() =>
-    getInitialState('gmao_messages', INITIAL_MESSAGES)
-  );
-  const [equipmentList, setEquipmentList] = useState<Equipment[]>(() =>
-    getInitialState('gmao_equipment', INITIAL_EQUIPMENT)
-  );
-  const [inventory, setInventory] = useState<InventoryItem[]>(() =>
-    getInitialState('gmao_inventory', INITIAL_INVENTORY)
-  );
-  const [automations, setAutomations] = useState<AutomationRule[]>(() =>
-    getInitialState('gmao_automations', INITIAL_AUTOMATIONS)
-  );
-  const [meters, setMeters] = useState<Meter[]>(() =>
-    getInitialState('gmao_meters', INITIAL_METERS)
-  );
-  const [templates, setTemplates] = useState<WorkOrderTemplate[]>(() =>
-    getInitialState('gmao_templates', INITIAL_TEMPLATES)
-  );
-  const [procedures, setProcedures] = useState<Procedure[]>(() =>
-    getInitialState('gmao_procedures', INITIAL_PROCEDURES)
-  );
-  const [tags, setTags] = useState<Tag[]>(() =>
-    getInitialState('gmao_tags', INITIAL_TAGS)
-  );
-  const [locations, setLocations] = useState<LocationItem[]>(() =>
-    getInitialState('gmao_locations', INITIAL_LOCATIONS)
-  );
-  const [users, setUsers] = useState<UserItem[]>(() =>
-    getInitialState('gmao_users', INITIAL_USERS)
-  );
-  const [suppliers, setSuppliers] = useState<SupplierItem[]>(() =>
-    getInitialState('gmao_suppliers', INITIAL_SUPPLIERS)
-  );
-  const [clients, setClients] = useState<ClientItem[]>(() =>
-    getInitialState('gmao_clients', INITIAL_CLIENTS)
-  );
-  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  // Sites State
+  const [sites, setSites] = useState<SiteInfo[]>(DEFAULT_SITES);
+  const [selectedSiteCode, setSelectedSiteCode] = useState<string>('BAM-HCM_AG'); // 'ALL' or specific site code
 
-  // Auto Sync to localStorage
-  React.useEffect(() => {
-    localStorage.setItem('gmao_workOrders', JSON.stringify(workOrders));
-  }, [workOrders]);
+  // Core State (Starts with BAM-HCM or multi-sites)
+  const [equipments, setEquipments] = useState<Equipment[]>(EQUIPMENTS_DATA);
+  const [tasks, setTasks] = useState<PlannedTask[]>(() => generatePlannedTasks(EQUIPMENTS_DATA));
+  const [executions, setExecutions] = useState<Record<string, ExecutionRecord>>(() => 
+    generateInitialExecutions(generatePlannedTasks(EQUIPMENTS_DATA), getCurrentISOWeekNumber())
+  );
+  const [gammesList, setGammesList] = useState<GammeOperatoire[]>(GAMMES_CATALOG);
 
-  React.useEffect(() => {
-    localStorage.setItem('gmao_requests', JSON.stringify(requests));
-  }, [requests]);
+  // Dataset Information State
+  const [datasetInfo, setDatasetInfo] = useState<PlanningDatasetInfo>({
+    name: 'Planning BAM Al Hoceima 2026 (Officiel)',
+    source: 'preset',
+    loadedAt: 'Automatique (Exercice 2026)',
+    equipmentsCount: EQUIPMENTS_DATA.length,
+    tasksCount: 852,
+    gammesCount: GAMMES_CATALOG.length,
+    description: 'Planning annuel 52 semaines pour les 28 équipements de l\'Agence BAM Al Hoceima avec 16 gammes opératoires',
+  });
 
-  React.useEffect(() => {
-    localStorage.setItem('gmao_equipment', JSON.stringify(equipmentList));
-  }, [equipmentList]);
+  // View Navigation State
+  const [currentView, setCurrentView] = useState<'timeline' | 'matrix' | 'bt' | 'kpi' | 'ai'>('timeline');
 
-  React.useEffect(() => {
-    localStorage.setItem('gmao_locations', JSON.stringify(locations));
-  }, [locations]);
+  // Modal State for Task Execution Validation
+  const [activeModalData, setActiveModalData] = useState<{
+    task: PlannedTask;
+    equipment: Equipment;
+    execution?: ExecutionRecord;
+  } | null>(null);
 
-  React.useEffect(() => {
-    localStorage.setItem('gmao_inventory', JSON.stringify(inventory));
-  }, [inventory]);
+  // Modal State for Adding Equipment
+  const [isAddEquipmentOpen, setIsAddEquipmentOpen] = useState(false);
 
-  // Handlers - Work Orders
-  const handleCreateWorkOrder = (woData: Omit<WorkOrder, 'id' | 'code' | 'createdAt' | 'updatedAt'>) => {
-    const newId = `wo-${Date.now()}`;
-    const newCode = `OT-${Math.floor(1000 + Math.random() * 9000)}`;
-    const now = new Date().toLocaleString('fr-FR');
-    const newWO: WorkOrder = {
-      ...woData,
-      id: newId,
-      code: newCode,
-      createdAt: now,
-      updatedAt: now
-    };
-    setWorkOrders(prev => [newWO, ...prev]);
-  };
+  // Modal State for Loading Planning & Gammes
+  const [isLoadPlanningOpen, setIsLoadPlanningOpen] = useState(false);
+  const [loadModalInitialTab, setLoadModalInitialTab] = useState<'presets' | 'import' | 'gammes' | 'sites' | 'diagnostic'>('presets');
 
-  const handleUpdateWOStatus = (id: string, status: WorkOrderStatus) => {
-    setWorkOrders(prev => prev.map(wo => wo.id === id ? { ...wo, status, updatedAt: new Date().toLocaleString('fr-FR') } : wo));
-  };
-
-  const handleDeleteWorkOrder = (id: string) => {
-    setWorkOrders(prev => prev.filter(wo => wo.id !== id));
-  };
-
-  const handleBulkImportWorkOrders = (newOrders: WorkOrder[], replaceExisting?: boolean) => {
-    if (replaceExisting) {
-      setWorkOrders(newOrders);
-      // Update locations state to match only the imported sites
-      const importedSites = Array.from(
-        new Set(newOrders.flatMap(w => [w.location, w.entity]).filter((s): s is string => Boolean(s) && s.trim().length > 0))
-      );
-      if (importedSites.length > 0) {
-        setLocations(
-          importedSites.map((name, idx) => ({
-            id: `loc-imp-${Date.now()}-${idx}`,
-            name,
-            type: 'Site',
-            equipmentCount: newOrders.filter(w => w.location === name || w.entity === name).length
-          }))
-        );
-      } else {
-        setLocations([]);
+  // Filter equipments & tasks according to selected site
+  const filteredEquipments = useMemo(() => {
+    if (selectedSiteCode === 'ALL') {
+      return equipments;
+    }
+    const filtered = equipments.filter(e => e.codeSite === selectedSiteCode);
+    // If the currently loaded dataset does not yet have this site's equipments, generate them automatically!
+    if (filtered.length === 0) {
+      const site = sites.find(s => s.code === selectedSiteCode);
+      if (site) {
+        return generateEquipmentsForSite(site);
       }
-    } else {
-      setWorkOrders(prev => [...newOrders, ...prev]);
+    }
+    return filtered;
+  }, [equipments, selectedSiteCode, sites]);
+
+  const filteredTasks = useMemo(() => {
+    const eqIds = new Set(filteredEquipments.map(e => e.id));
+    const matchingTasks = tasks.filter(t => eqIds.has(t.equipmentId));
+    if (matchingTasks.length === 0 && filteredEquipments.length > 0) {
+      return generatePlannedTasks(filteredEquipments);
+    }
+    return matchingTasks;
+  }, [tasks, filteredEquipments]);
+
+  // Compute Global KPI Statistics based on active filtered view
+  const stats: KPIStats = useMemo(() => {
+    // Tasks up to active week (week <= currentWeekNumber)
+    const activeTasks = filteredTasks.filter(t => t.weekNumber <= currentWeekNumber);
+    const totalPlanned = activeTasks.length || 1;
+
+    let completedCount = 0;
+    let conformeCount = 0;
+    let inProgressCount = 0;
+    let overdueCount = 0;
+    let defectsCount = 0;
+
+    let elecPlanned = 0;
+    let elecDone = 0;
+    let fluidePlanned = 0;
+    let fluideDone = 0;
+
+    const eqMap = new Map<string, Equipment>(filteredEquipments.map(e => [e.id, e]));
+
+    activeTasks.forEach(t => {
+      const eq = eqMap.get(t.equipmentId);
+      const isElec = eq?.lot === 'ÉLECTRICITÉ';
+      if (isElec) elecPlanned++;
+      else fluidePlanned++;
+
+      const exec = executions[t.id];
+      const status = exec?.status || (t.weekNumber < currentWeekNumber ? 'retard' : 'planifie');
+
+      if (status === 'conforme') {
+        completedCount++;
+        conformeCount++;
+        if (isElec) elecDone++;
+        else fluideDone++;
+      } else if (status === 'non_conforme') {
+        completedCount++;
+        defectsCount++;
+        if (isElec) elecDone++;
+        else fluideDone++;
+      } else if (status === 'en_cours') {
+        inProgressCount++;
+      } else if (status === 'retard') {
+        overdueCount++;
+      }
+    });
+
+    const executionRate = Math.round((completedCount / totalPlanned) * 100);
+    const conformityRate = completedCount > 0 ? Math.round((conformeCount / completedCount) * 100) : 100;
+
+    return {
+      executionRate,
+      conformityRate,
+      totalPlanned,
+      completedCount,
+      inProgressCount,
+      overdueCount,
+      defectsCount,
+      byLot: {
+        electricite: {
+          total: elecPlanned,
+          done: elecDone,
+          rate: elecPlanned > 0 ? Math.round((elecDone / elecPlanned) * 100) : 0,
+        },
+        fluide: {
+          total: fluidePlanned,
+          done: fluideDone,
+          rate: fluidePlanned > 0 ? Math.round((fluideDone / fluidePlanned) * 100) : 0,
+        },
+      },
+    };
+  }, [filteredTasks, executions, filteredEquipments, currentWeekNumber]);
+
+  // Handlers
+  const handleSelectTask = (task: PlannedTask, equipment: Equipment, execution?: ExecutionRecord) => {
+    setActiveModalData({ task, equipment, execution });
+  };
+
+  const handleSaveExecution = (record: ExecutionRecord) => {
+    setExecutions(prev => ({
+      ...prev,
+      [record.taskId]: record,
+    }));
+  };
+
+  const handleAddEquipment = (newEq: Equipment) => {
+    setEquipments(prev => [...prev, newEq]);
+    // Generate new tasks for new equipment
+    const newTasks = generatePlannedTasks([newEq]);
+    setTasks(prev => [...prev, ...newTasks]);
+    setDatasetInfo(prev => ({
+      ...prev,
+      equipmentsCount: prev.equipmentsCount + 1,
+      tasksCount: prev.tasksCount + newTasks.length,
+    }));
+  };
+
+  // Switch Active Site
+  const handleSelectSite = (siteCode: string) => {
+    setSelectedSiteCode(siteCode);
+    
+    // If selecting a site that isn't yet fully in state, ensure its equipments exist
+    if (siteCode !== 'ALL') {
+      const site = sites.find(s => s.code === siteCode);
+      const existsInEquipments = equipments.some(e => e.codeSite === siteCode);
+      if (!existsInEquipments && site) {
+        const siteEquipments = generateEquipmentsForSite(site);
+        const siteTasks = generatePlannedTasks(siteEquipments);
+        setEquipments(prev => [...prev, ...siteEquipments]);
+        setTasks(prev => [...prev, ...siteTasks]);
+        setExecutions(prev => ({
+          ...prev,
+          ...generateInitialExecutions(siteTasks, currentWeekNumber),
+        }));
+      }
     }
   };
 
-  const handleClearAllWorkOrders = () => {
-    setWorkOrders([]);
+  // Add a new Site dynamically
+  const handleAddSite = (newSite: SiteInfo, autoGenerateEquipments: boolean) => {
+    setSites(prev => {
+      const filtered = prev.filter(s => s.code !== newSite.code);
+      return [...filtered, newSite];
+    });
+
+    if (autoGenerateEquipments) {
+      const siteEquipments = generateEquipmentsForSite(newSite);
+      const siteTasks = generatePlannedTasks(siteEquipments);
+      const siteExecutions = generateInitialExecutions(siteTasks, currentWeekNumber);
+
+      setEquipments(prev => [...prev.filter(e => e.codeSite !== newSite.code), ...siteEquipments]);
+      setTasks(prev => [...prev.filter(t => !siteEquipments.some(e => e.id === t.equipmentId)), ...siteTasks]);
+      setExecutions(prev => ({ ...prev, ...siteExecutions }));
+    }
+
+    setSelectedSiteCode(newSite.code);
+    setDatasetInfo(prev => ({
+      ...prev,
+      name: `Planning ${newSite.name} 2026`,
+      loadedAt: new Date().toLocaleTimeString(),
+      description: `Site ${newSite.name} (${newSite.code}) configuré et actif`,
+    }));
   };
 
-  const handleEditWorkOrder = (id: string, updated: Partial<WorkOrder>) => {
-    setWorkOrders(prev => prev.map(wo => wo.id === id ? { ...wo, ...updated, updatedAt: new Date().toLocaleString('fr-FR') } : wo));
-  };
+  // Load Exclusive Planning for a single site
+  const handleLoadSitePlanning = (siteCode: string) => {
+    const site = sites.find(s => s.code === siteCode) || DEFAULT_SITES[0];
+    const siteEquipments = generateEquipmentsForSite(site);
+    const siteTasks = generatePlannedTasks(siteEquipments);
+    const siteExecutions = generateInitialExecutions(siteTasks, currentWeekNumber);
 
-  // Handlers - Requests
-  const handleAddRequest = (reqData: Omit<MaintenanceRequest, 'id' | 'createdAt' | 'status'>) => {
-    const newReq: MaintenanceRequest = {
-      ...reqData,
-      id: `req-${Date.now()}`,
-      status: 'En attente',
-      createdAt: new Date().toLocaleString('fr-FR')
-    };
-    setRequests(prev => [newReq, ...prev]);
-  };
+    setEquipments(siteEquipments);
+    setTasks(siteTasks);
+    setExecutions(siteExecutions);
+    setSelectedSiteCode(site.code);
 
-  const handleApproveRequest = (reqId: string) => {
-    const req = requests.find(r => r.id === reqId);
-    if (!req) return;
-
-    setRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'Approuvée' } : r));
-
-    handleCreateWorkOrder({
-      title: req.title,
-      description: req.description,
-      priority: req.priority,
-      status: 'Ouvert',
-      type: 'Corrective',
-      equipmentName: req.equipmentName,
-      location: req.location || 'Atelier Principal',
-      dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
-      assignee: 'Équipe Maintenance'
+    setDatasetInfo({
+      name: `Planning BAM ${site.name} 2026`,
+      source: 'preset',
+      loadedAt: new Date().toLocaleTimeString(),
+      equipmentsCount: siteEquipments.length,
+      tasksCount: siteTasks.length,
+      gammesCount: gammesList.length,
+      description: `Planning annuel exclusif pour ${site.name} (${site.zone}) - ${siteEquipments.length} équipements`,
     });
   };
 
-  const handleRejectRequest = (reqId: string) => {
-    setRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'Rejetée' } : r));
+  // Load All Sites Network (Consolidated)
+  const handleLoadAllSitesNetwork = () => {
+    const allEquipments = MULTI_SITE_PRESET_EQUIPMENTS;
+    const allTasks = generatePlannedTasks(allEquipments);
+    const allExecutions = generateInitialExecutions(allTasks, currentWeekNumber);
+
+    setEquipments(allEquipments);
+    setTasks(allTasks);
+    setExecutions(allExecutions);
+    setSelectedSiteCode('ALL');
+
+    setDatasetInfo({
+      name: 'Réseau Multi-Sites BAM (Consolidé 6 Agences)',
+      source: 'preset',
+      loadedAt: new Date().toLocaleTimeString(),
+      equipmentsCount: allEquipments.length,
+      tasksCount: allTasks.length,
+      gammesCount: gammesList.length,
+      description: 'Vision consolidée des 6 agences régionales BAM (Al Hoceima, Nador, Tanger, Oujda, Tétouan, Rabat)',
+    });
   };
 
-  // Handlers - Messages
-  const handleSendMessage = (conversationId: string, content: string) => {
-    const newMsg: Message = {
-      id: `msg-${Date.now()}`,
-      conversationId,
-      senderId: 'user-self',
-      senderName: 'Moi',
-      senderInitials: 'C',
-      content,
-      timestamp: new Date().toLocaleString('fr-FR'),
-      isSelf: true
-    };
-    setMessages(prev => [...prev, newMsg]);
-
-    setConversations(prev => prev.map(c => c.id === conversationId ? {
-      ...c,
-      lastMessage: content,
-      lastMessageTime: 'À l\'instant'
-    } : c));
+  // Load Preset Datasets
+  const handleLoadPreset = (presetType: 'official_2026' | 'all_sites_network' | 'avril_test' | 'gammes_only') => {
+    if (presetType === 'all_sites_network') {
+      handleLoadAllSitesNetwork();
+    } else if (presetType === 'official_2026') {
+      const initialTasks = generatePlannedTasks(EQUIPMENTS_DATA);
+      setEquipments(EQUIPMENTS_DATA);
+      setTasks(initialTasks);
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setSelectedSiteCode('BAM-HCM_AG');
+      setDatasetInfo({
+        name: 'Planning BAM Al Hoceima 2026 (Complet)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Jeu complet 2026 avec 28 équipements, 52 semaines et 16 gammes opératoires',
+      });
+    } else if (presetType === 'avril_test') {
+      const initialTasks = generatePlannedTasks(EQUIPMENTS_DATA);
+      setEquipments(EQUIPMENTS_DATA);
+      setTasks(initialTasks);
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setSelectedSiteCode('BAM-HCM_AG');
+      setCurrentView('bt'); // Automatically switch to Bons de Travail view for test
+      setDatasetInfo({
+        name: 'Focus Test Mois d\'Avril (S15 à S18)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.filter(t => t.weekNumber >= 15 && t.weekNumber <= 18).length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Test spécial ciblant le mois d\'Avril pour l\'Agence BAM Al Hoceima avec génération BTs',
+      });
+    } else if (presetType === 'gammes_only') {
+      setGammesList(GAMMES_CATALOG);
+      setDatasetInfo(prev => ({
+        ...prev,
+        gammesCount: GAMMES_CATALOG.length,
+        loadedAt: new Date().toLocaleTimeString(),
+      }));
+    }
   };
 
-  const handleAddConversation = (name: string) => {
-    const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'EQ';
-    const newConv: Conversation = {
-      id: `conv-${Date.now()}`,
-      name,
-      initials,
-      lastMessage: 'Conversation créée',
-      lastMessageTime: 'À l\'instant'
-    };
-    setConversations(prev => [newConv, ...prev]);
+  // Import custom planning from file
+  const handleImportPlanning = (newEquipments: Equipment[], newTasks: PlannedTask[], newGammes?: GammeOperatoire[]) => {
+    // Detect sites from imported equipments
+    const detectedSitesMap = new Map<string, SiteInfo>();
+    newEquipments.forEach(eq => {
+      if (eq.codeSite && !detectedSitesMap.has(eq.codeSite)) {
+        detectedSitesMap.set(eq.codeSite, {
+          code: eq.codeSite,
+          name: eq.site || `Agence ${eq.codeSite}`,
+          zone: (eq.zone as any) || 'NORD',
+          city: eq.site?.replace(' AGENCE', '').trim() || 'Maroc',
+          manager: 'Responsable Technique BAM',
+        });
+      }
+    });
+
+    if (detectedSitesMap.size > 0) {
+      setSites(prev => {
+        const merged = [...prev];
+        detectedSitesMap.forEach((newSite, code) => {
+          if (!merged.some(s => s.code === code)) {
+            merged.push(newSite);
+          }
+        });
+        return merged;
+      });
+    }
+
+    // Fusionner avec l'existant au lieu d'écraser : sinon un import (ex. mai)
+    // effaçait silencieusement les équipements/tâches d'un import précédent (ex. avril).
+    // Dédoublonnage par id : en cas de collision, la version nouvellement importée gagne.
+    let mergedEquipmentsCount = 0;
+    let mergedTasksCount = 0;
+
+    setEquipments(prev => {
+      const merged = new Map(prev.map(e => [e.id, e]));
+      newEquipments.forEach(e => merged.set(e.id, e));
+      mergedEquipmentsCount = merged.size;
+      return Array.from(merged.values());
+    });
+
+    setTasks(prev => {
+      const merged = new Map(prev.map(t => [t.id, t]));
+      newTasks.forEach(t => merged.set(t.id, t));
+      mergedTasksCount = merged.size;
+      return Array.from(merged.values());
+    });
+
+    // Les exécutions déjà enregistrées (pointages, statuts) sont conservées ;
+    // on ajoute uniquement les exécutions initiales pour les nouvelles tâches importées.
+    setExecutions(prev => ({
+      ...generateInitialExecutions(newTasks, currentWeekNumber),
+      ...prev,
+    }));
+
+    if (newGammes && newGammes.length > 0) {
+      setGammesList(newGammes);
+    }
+    setSelectedSiteCode(detectedSitesMap.size > 1 ? 'ALL' : (Array.from(detectedSitesMap.keys())[0] || 'BAM-HCM_AG'));
+    setDatasetInfo({
+      name: 'Planning Importé (Fichier Personnalisé)',
+      source: 'file_import',
+      loadedAt: new Date().toLocaleTimeString(),
+      equipmentsCount: mergedEquipmentsCount,
+      tasksCount: mergedTasksCount,
+      gammesCount: newGammes ? newGammes.length : gammesList.length,
+      description: `Données importées avec succès (${newEquipments.length} équipements sur ${detectedSitesMap.size || 1} site(s))`,
+    });
   };
 
-  // Handlers - Automations
-  const handleToggleAutomation = (id: string) => {
-    setAutomations(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
+  // Update gammes catalogue
+  const handleUpdateGammes = (newGammes: GammeOperatoire[]) => {
+    setGammesList(newGammes);
+    setDatasetInfo(prev => ({
+      ...prev,
+      gammesCount: newGammes.length,
+      loadedAt: new Date().toLocaleTimeString(),
+    }));
   };
 
-  const handleAddAutomation = (rule: Omit<AutomationRule, 'id'>) => {
-    setAutomations(prev => [...prev, { ...rule, id: `auto-${Date.now()}` }]);
-  };
-
-  // Handlers - Meters
-  const handleAddMeter = (meter: Omit<Meter, 'id' | 'lastReadingDate'>) => {
-    setMeters(prev => [...prev, {
-      ...meter,
-      id: `meter-${Date.now()}`,
-      lastReadingDate: new Date().toLocaleDateString('fr-FR')
-    }]);
-  };
-
-  const handleUpdateMeterReading = (id: string, value: number) => {
-    setMeters(prev => prev.map(m => m.id === id ? {
-      ...m,
-      currentValue: value,
-      lastReadingDate: new Date().toLocaleDateString('fr-FR')
-    } : m));
-  };
-
-  // Handlers - Equipment
-  const handleAddEquipment = (eq: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt' | 'workOrdersCount'>) => {
-    const newEq: Equipment = {
-      ...eq,
-      id: `eq-${Date.now()}`,
-      createdAt: new Date().toLocaleString('fr-FR'),
-      updatedAt: new Date().toLocaleString('fr-FR'),
-      workOrdersCount: 0
-    };
-    setEquipmentList(prev => [newEq, ...prev]);
-  };
-
-  const handleUpdateEquipmentStatus = (id: string, status: OperationalStatus) => {
-    setEquipmentList(prev => prev.map(e => e.id === id ? {
-      ...e,
-      status,
-      updatedAt: new Date().toLocaleString('fr-FR')
-    } : e));
-  };
-
-  const handleDeleteEquipment = (id: string) => {
-    setEquipmentList(prev => prev.filter(e => e.id !== id));
-  };
-
-  const handleEditEquipment = (id: string, updated: Partial<Equipment>) => {
-    setEquipmentList(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
-  };
-
-  // Handlers - Inventory
-  const handleAddInventoryPart = (part: Omit<InventoryItem, 'id'>) => {
-    setInventory(prev => [...prev, { ...part, id: `part-${Date.now()}` }]);
-  };
-
-  const handleUpdateInventoryQty = (id: string, delta: number) => {
-    setInventory(prev => prev.map(p => p.id === id ? {
-      ...p,
-      quantity: Math.max(0, p.quantity + delta)
-    } : p));
-  };
-
-  // Handlers - Templates, Procedures, Tags, Locations, Users, Suppliers, Clients
-  const handleAddTemplate = (tmpl: Omit<WorkOrderTemplate, 'id'>) => {
-    setTemplates(prev => [...prev, { ...tmpl, id: `tmpl-${Date.now()}` }]);
-  };
-
-  const handleAddProcedure = (proc: Omit<Procedure, 'id' | 'createdAt'>) => {
-    setProcedures(prev => [...prev, {
-      ...proc,
-      id: `proc-${Date.now()}`,
-      createdAt: new Date().toLocaleDateString('fr-FR')
-    }]);
-  };
-
-  const handleAddTag = (tag: Omit<Tag, 'id'>) => {
-    setTags(prev => [...prev, { ...tag, id: `tag-${Date.now()}` }]);
-  };
-
-  const handleAddLocation = (loc: Omit<LocationItem, 'id'>) => {
-    setLocations(prev => [...prev, { ...loc, id: `loc-${Date.now()}` }]);
-  };
-
-  const handleDeleteLocation = (id: string) => {
-    setLocations(prev => prev.filter(l => l.id !== id));
-  };
-
-  const handleClearAllLocations = () => {
-    setLocations([]);
-  };
-
-  const handleResetLocations = () => {
-    const currentSites = Array.from(
-      new Set(workOrders.flatMap(w => [w.location, w.entity]).filter((s): s is string => Boolean(s) && s.trim().length > 0))
+  const handleExportData = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(
+      JSON.stringify({ equipments, tasks, executions, gammesList, sites, stats, datasetInfo }, null, 2)
     );
-    if (currentSites.length > 0) {
-      setLocations(
-        currentSites.map((name, idx) => ({
-          id: `loc-${idx}`,
-          name,
-          type: 'Site',
-          equipmentCount: workOrders.filter(w => w.location === name || w.entity === name).length
-        }))
-      );
-    } else {
-      setLocations([]);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `Planning_Maintenance_BAM_MultiSites_S${currentWeekNumber}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleResetData = () => {
+    if (confirm("Voulez-vous réinitialiser le suivi de maintenance aux données initiales de démonstration ?")) {
+      const initialTasks = generatePlannedTasks(EQUIPMENTS_DATA);
+      setSites(DEFAULT_SITES);
+      setEquipments(EQUIPMENTS_DATA);
+      setTasks(initialTasks);
+      setExecutions(generateInitialExecutions(initialTasks, currentWeekNumber));
+      setGammesList(GAMMES_CATALOG);
+      setSelectedSiteCode('BAM-HCM_AG');
+      setDatasetInfo({
+        name: 'Planning BAM Al Hoceima 2026 (Officiel)',
+        source: 'preset',
+        loadedAt: new Date().toLocaleTimeString(),
+        equipmentsCount: EQUIPMENTS_DATA.length,
+        tasksCount: initialTasks.length,
+        gammesCount: GAMMES_CATALOG.length,
+        description: 'Planning officiel 2026 réinitialisé',
+      });
     }
   };
 
-  const handleAddUser = (user: Omit<UserItem, 'id'>) => {
-    setUsers(prev => [...prev, { ...user, id: `usr-${Date.now()}` }]);
-  };
-
-  const handleAddSupplier = (supplier: Omit<SupplierItem, 'id'>) => {
-    setSuppliers(prev => [...prev, { ...supplier, id: `sup-${Date.now()}` }]);
-  };
-
-  const handleAddClient = (client: Omit<ClientItem, 'id'>) => {
-    setClients(prev => [...prev, { ...client, id: `cli-${Date.now()}` }]);
-  };
-
-  // Render view router based on currentTab
-  const renderCurrentView = () => {
-    switch (currentTab) {
-      case 'work-orders':
-        return (
-          <WorkOrdersView
-            workOrders={workOrders}
-            equipmentList={equipmentList}
-            locations={locations}
-            onAddWorkOrder={handleCreateWorkOrder}
-            onUpdateStatus={handleUpdateWOStatus}
-            onDeleteWorkOrder={handleDeleteWorkOrder}
-            onEditWorkOrder={handleEditWorkOrder}
-            onBulkImportWorkOrders={handleBulkImportWorkOrders}
-            onClearAllWorkOrders={handleClearAllWorkOrders}
-            onResetLocations={handleResetLocations}
-          />
-        );
-      case 'requests':
-        return (
-          <RequestsView
-            requests={requests}
-            equipmentList={equipmentList}
-            onAddRequest={handleAddRequest}
-            onApproveRequest={handleApproveRequest}
-            onRejectRequest={handleRejectRequest}
-          />
-        );
-      case 'messages':
-        return (
-          <MessagesView
-            conversations={conversations}
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onAddConversation={handleAddConversation}
-          />
-        );
-      case 'reports':
-        return (
-          <ReportsView
-            workOrders={workOrders}
-            equipmentList={equipmentList}
-          />
-        );
-      case 'automations':
-        return (
-          <AutomationsView
-            automations={automations}
-            onToggleRule={handleToggleAutomation}
-            onAddRule={handleAddAutomation}
-          />
-        );
-      case 'meters':
-        return (
-          <MetersView
-            meters={meters}
-            onAddMeter={handleAddMeter}
-            onUpdateReading={handleUpdateMeterReading}
-          />
-        );
-      case 'equipment':
-        return (
-          <EquipmentView
-            equipmentList={equipmentList}
-            onAddEquipment={handleAddEquipment}
-            onUpdateStatus={handleUpdateEquipmentStatus}
-            onDeleteEquipment={handleDeleteEquipment}
-            onEditEquipment={handleEditEquipment}
-          />
-        );
-      case 'inventory':
-        return (
-          <InventoryView
-            inventory={inventory}
-            onAddPart={handleAddInventoryPart}
-            onUpdateQuantity={handleUpdateInventoryQty}
-          />
-        );
-      case 'preventive':
-        return <PreventiveView />;
-      case 'templates':
-        return (
-          <TemplatesView
-            templates={templates}
-            onAddTemplate={handleAddTemplate}
-          />
-        );
-      case 'procedures':
-        return (
-          <ProceduresView
-            procedures={procedures}
-            onAddProcedure={handleAddProcedure}
-          />
-        );
-      case 'tags':
-        return (
-          <TagsView
-            tags={tags}
-            onAddTag={handleAddTag}
-          />
-        );
-      case 'locations':
-        return (
-          <LocationsView
-            locations={locations}
-            onAddLocation={handleAddLocation}
-            onDeleteLocation={handleDeleteLocation}
-            onClearAllLocations={handleClearAllLocations}
-            onResetLocations={handleResetLocations}
-          />
-        );
-      case 'users':
-        return (
-          <UsersView
-            users={users}
-            onAddUser={handleAddUser}
-          />
-        );
-      case 'suppliers':
-        return (
-          <SuppliersView
-            suppliers={suppliers}
-            onAddSupplier={handleAddSupplier}
-          />
-        );
-      case 'clients':
-        return (
-          <ClientsView
-            clients={clients}
-            onAddClient={handleAddClient}
-          />
-        );
-      default:
-        return (
-          <WorkOrdersView
-            workOrders={workOrders}
-            equipmentList={equipmentList}
-            locations={locations}
-            onAddWorkOrder={handleCreateWorkOrder}
-            onUpdateStatus={handleUpdateWOStatus}
-            onDeleteWorkOrder={handleDeleteWorkOrder}
-            onEditWorkOrder={handleEditWorkOrder}
-            onBulkImportWorkOrders={handleBulkImportWorkOrders}
-            onClearAllWorkOrders={handleClearAllWorkOrders}
-          />
-        );
-    }
-  };
+  const activeSiteInfo = sites.find(s => s.code === selectedSiteCode);
 
   return (
-    <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden antialiased">
-      {/* Navigation Sidebar */}
-      <Sidebar
-        currentTab={currentTab}
-        onSelectTab={setCurrentTab}
-        onOpenHelp={() => setIsHelpModalOpen(true)}
-        pendingRequestsCount={requests.filter(r => r.status === 'En attente').length}
+    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col selection:bg-blue-500 selection:text-white">
+      
+      {/* Header Bar with Multi-Site Switcher */}
+      <Header
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        onOpenAddModal={() => setIsAddEquipmentOpen(true)}
+        onOpenLoadModal={(tab = 'presets') => {
+          setLoadModalInitialTab(tab);
+          setIsLoadPlanningOpen(true);
+        }}
+        onExportData={handleExportData}
+        onResetData={handleResetData}
+        currentWeekNumber={currentWeekNumber}
+        onWeekChange={setCurrentWeekNumber}
+        datasetInfo={datasetInfo}
+        sites={sites}
+        selectedSiteCode={selectedSiteCode}
+        onSelectSite={handleSelectSite}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {renderCurrentView()}
+      {/* Global Realization KPI Summary */}
+      <KPIOverview stats={stats} />
+
+      {/* Main Content Area with Site-Filtered Datasets */}
+      <main className="flex-1 pb-12">
+        {currentView === 'timeline' && (
+          <TimelineExecutionView
+            equipments={filteredEquipments}
+            tasks={filteredTasks}
+            executions={executions}
+            weeks={WEEKS_2026}
+            currentWeekNumber={currentWeekNumber}
+            onSelectTask={handleSelectTask}
+          />
+        )}
+
+        {currentView === 'matrix' && (
+          <MatrixScheduleView
+            equipments={filteredEquipments}
+            tasks={filteredTasks}
+            executions={executions}
+            weeks={WEEKS_2026}
+            currentWeekNumber={currentWeekNumber}
+            onSelectTask={handleSelectTask}
+          />
+        )}
+
+        {currentView === 'bt' && (
+          <WorkOrdersBTView
+            equipments={filteredEquipments}
+            tasks={filteredTasks}
+            executions={executions}
+            weeks={WEEKS_2026}
+            currentWeekNumber={currentWeekNumber}
+            onSelectTask={handleSelectTask}
+            onSaveExecution={handleSaveExecution}
+            gammesList={gammesList}
+          />
+        )}
+
+        {currentView === 'kpi' && (
+          <KPIDashboardView
+            stats={stats}
+            equipments={filteredEquipments}
+            tasks={filteredTasks}
+            executions={executions}
+            currentWeekNumber={currentWeekNumber}
+            onSelectTask={handleSelectTask}
+          />
+        )}
+
+        {currentView === 'ai' && (
+          <AIAssistantDrawer
+            stats={stats}
+            equipments={filteredEquipments}
+            currentWeekNumber={currentWeekNumber}
+          />
+        )}
       </main>
 
-      {/* Help Modal */}
-      {isHelpModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <span>Center d'aide & Documentation GMAO</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsHelpModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="space-y-3 text-xs text-gray-600 leading-relaxed">
-              <p className="font-semibold text-gray-800">
-                Bienvenue dans votre système de Gestion de Maintenance Assistée par Ordinateur (GMAO).
-              </p>
-              <ul className="list-disc pl-4 space-y-1">
-                <li><strong>Ordres de Travail :</strong> Créez, filtrez, modifiez ou supprimez vos interventions préventives et correctives.</li>
-                <li><strong>Sites & Équipements :</strong> Gérez vos emplacements et arborescences d'équipements.</li>
-                <li><strong>Réinitialisation des sites :</strong> En cas de présence de noms de sites invalides importés, utilisez le bouton de réinitialisation pour restaurer la liste officielle.</li>
-              </ul>
-              <p className="pt-2 text-gray-500">
-                Pour toute assistance complémentaire, contactez le support technique de votre établissement.
-              </p>
-            </div>
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setIsHelpModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-xs"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Load & Manage Planning / Multi-Sites / Gammes Modal */}
+      <LoadPlanningModal
+        isOpen={isLoadPlanningOpen}
+        onClose={() => setIsLoadPlanningOpen(false)}
+        datasetInfo={datasetInfo}
+        gammesList={gammesList}
+        sites={sites}
+        selectedSiteCode={selectedSiteCode}
+        onSelectSite={handleSelectSite}
+        onAddSite={handleAddSite}
+        onLoadSitePlanning={handleLoadSitePlanning}
+        onLoadAllSitesNetwork={handleLoadAllSitesNetwork}
+        onLoadPreset={handleLoadPreset}
+        onImportPlanning={handleImportPlanning}
+        onUpdateGammes={handleUpdateGammes}
+        onResetToDefault={handleResetData}
+        currentWeekNumber={currentWeekNumber}
+        initialTab={loadModalInitialTab}
+      />
+
+      {/* Task Execution Validation Modal */}
+      {activeModalData && (
+        <ExecutionModal
+          isOpen={Boolean(activeModalData)}
+          onClose={() => setActiveModalData(null)}
+          task={activeModalData.task}
+          equipment={activeModalData.equipment}
+          existingExecution={activeModalData.execution}
+          onSaveExecution={handleSaveExecution}
+          gammesList={gammesList}
+        />
       )}
+
+      {/* Add New Equipment Modal */}
+      <AddEquipmentModal
+        isOpen={isAddEquipmentOpen}
+        onClose={() => setIsAddEquipmentOpen(false)}
+        onAddEquipment={handleAddEquipment}
+        activeSite={activeSiteInfo || sites[0]}
+        existingEquipmentIds={equipments.map(e => e.id)}
+      />
+
+      {/* Footer */}
+      <footer className="bg-slate-900 text-slate-400 text-xs border-t border-slate-800 py-4 px-6 text-center">
+        <p>
+          Bank Al-Maghrib • {selectedSiteCode === 'ALL' ? 'Réseau National Multi-Sites (6 Agences)' : activeSiteInfo?.name || 'Agence Al Hoceima'} — Système de Suivi d'Exécution du Planning de Maintenance Préventive 2026
+        </p>
+      </footer>
+
     </div>
   );
 }
+
